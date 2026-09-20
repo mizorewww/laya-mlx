@@ -124,6 +124,21 @@ class EncoderLayer(nn.Module):
         return x + self.mlp(self.mlp_norm(x))
 
 
+_SLIDING_WINDOW_CACHE = {}
+
+
+def get_sliding_window_mask(seq_len: int, window: int) -> mx.array:
+    """Return precomputed boolean band mask for local sliding-window attention."""
+    key = (seq_len, window)
+    mask = _SLIDING_WINDOW_CACHE.get(key)
+    if mask is None:
+        positions = mx.arange(seq_len)
+        mask = (mx.abs(positions[:, None] - positions[None, :]) <= window // 2)[None, None]
+        if len(_SLIDING_WINDOW_CACHE) < 64:
+            _SLIDING_WINDOW_CACHE[key] = mask
+    return mask
+
+
 def attention_masks(attention_mask, window):
     """Boolean key masks, with inclusive local distance <= local_attention // 2.
 
@@ -132,9 +147,7 @@ def attention_masks(attention_mask, window):
     """
     valid = attention_mask.astype(mx.bool_)
     full = valid[:, None, None, :]
-    positions = mx.arange(valid.shape[1])
-    local = mx.abs(positions[:, None] - positions[None, :]) <= window // 2
-    local = (local[None, None] | ~valid[:, None, :, None]) & full
+    local = (get_sliding_window_mask(valid.shape[1], window) | ~valid[:, None, :, None]) & full
     return {"full_attention": full, "sliding_attention": local}
 
 
