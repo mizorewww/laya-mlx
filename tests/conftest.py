@@ -1,19 +1,33 @@
 import json
 import os
 
-import mlx.core as mx
 import pytest
-from mlx.utils import tree_flatten
-from tokenizers import Tokenizer, models, pre_tokenizers
 
-from laya_mlx.model import DecisionModel, EncoderConfig
+try:
+    import mlx.core as mx
+    from mlx.utils import tree_flatten
 
-if os.environ.get("LAYA_MLX_TEST_DEVICE") == "cpu":
-    mx.set_default_device(mx.cpu)
+    from laya_mlx.model import DecisionModel, EncoderConfig
+
+    if os.environ.get("LAYA_MLX_TEST_DEVICE") == "cpu":
+        mx.set_default_device(mx.cpu)
+    has_mlx = True
+except ImportError:
+    mx = None
+    tree_flatten = None
+    DecisionModel = EncoderConfig = None
+    has_mlx = False
+
+try:
+    from tokenizers import Tokenizer, models, pre_tokenizers
+except ImportError:
+    Tokenizer = models = pre_tokenizers = None
 
 
 @pytest.fixture
 def tiny_checkpoint(tmp_path):
+    if not has_mlx or Tokenizer is None:
+        pytest.skip("mlx and tokenizers are required for tiny_checkpoint fixture")
     cfg = {
         "model_type": "modernbert",
         "vocab_size": 128,

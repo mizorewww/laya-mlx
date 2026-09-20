@@ -87,6 +87,8 @@ class Agent:
         compile=False,
         pad_to_multiple=None,
         cache_prompts=False,
+        quantize=None,
+        low_memory=False,
     ):
         if dtype not in DTYPES:
             raise ValueError(f"dtype must be one of {list(DTYPES)}")
@@ -94,11 +96,15 @@ class Agent:
             raise ValueError("MLX device must be 'gpu', 'metal', or 'cpu'")
         if not isinstance(batch_size, int) or isinstance(batch_size, bool) or batch_size < 1:
             raise ValueError("batch_size must be a positive integer")
+        if quantize is not None and quantize not in (4, 8):
+            raise ValueError("quantize must be 4, 8, or None")
         self.device = (
             mx.default_device() if device is None else (mx.cpu if device == "cpu" else mx.gpu)
         )
         self.dtype = DTYPES[dtype]
         self.batch_size = batch_size
+        self.quantize = quantize
+        self.low_memory = low_memory
         if pad_to_multiple is not None and (
             not isinstance(pad_to_multiple, int)
             or isinstance(pad_to_multiple, bool)
@@ -131,9 +137,40 @@ class Agent:
         self.tok = Tokenizer(self.model_dir / "tokenizer")
         with mx.stream(self.device):
             self.model = DecisionModel(enc_cfg, self.cfg)
+            mlx_cfg_path = self.model_dir / "mlx_config.json"
+            mlx_cfg = json.loads(mlx_cfg_path.read_text()) if mlx_cfg_path.is_file() else {}
+            ckpt_quant = mlx_cfg.get("quantization")
+
+            if ckpt_quant:
+                from .quantize import quantize_model
+
+                quantize_model(
+                    self.model,
+                    bits=ckpt_quant["bits"],
+                    group_size=ckpt_quant.get("group_size", 64),
+                    quantize_heads=ckpt_quant.get("quantize_heads", False),
+                )
+
             weights = sanitize_weights(mx.load(str(self.model_dir / "model.safetensors")))
-            weights = {k: v.astype(self.dtype) for k, v in weights.items()}
+            if ckpt_quant:
+                weights = {
+                    k: (
+                        v.astype(self.dtype)
+                        if v.dtype in (mx.float16, mx.float32, mx.bfloat16)
+                        else v
+                    )
+                    for k, v in weights.items()
+                }
+            else:
+                weights = {k: v.astype(self.dtype) for k, v in weights.items()}
+
             self.model.load_weights(list(weights.items()), strict=True)
+
+            if quantize is not None and not ckpt_quant:
+                from .quantize import quantize_model
+
+                quantize_model(self.model, bits=quantize)
+
             self.model.eval()
             mx.eval(self.model.parameters())
         # Frozen inference instance: changing weights or module structure requires a new Agent.
@@ -244,6 +281,13 @@ class Agent:
                         confidence=round(max(float(p[1]), 1.0 - float(p[1])), 4),
                     )
                 answers[qid] = answer
+        if self.low_memory:
+            metal = getattr(mx, "metal", None)
+            if metal and hasattr(metal, "clear_cache"):
+                try:
+                    metal.clear_cache()
+                except Exception:
+                    pass
         return {
             "model": "laya-rl-agent",
             "answers": answers,

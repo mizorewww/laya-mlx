@@ -28,7 +28,11 @@ def local_checkpoint(value=None):
     path = Path(value).expanduser()
     if path.is_dir():
         return path
-    if str(value).startswith((".", "/", "~")):
+    if (
+        str(value).startswith((".", "/", "~"))
+        or Path(value).is_absolute()
+        or bool(Path(value).drive)
+    ):
         raise FileNotFoundError(f"Local checkpoint does not exist: {value}")
     from huggingface_hub import snapshot_download
 

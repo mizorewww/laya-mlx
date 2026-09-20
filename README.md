@@ -203,6 +203,90 @@ uv run laya-mlx predict \
 
 The export contains `model.safetensors`, encoder and agent configurations, tokenizer files and `mlx_config.json`. Existing output directories are never overwritten. This is a parameter-name/dtype conversion, not quantization or retraining. The source checkpoints already store FP16 weights; choosing FP32 increases arithmetic precision, not the precision of the source weights.
 
+## Low-memory device optimization & quantization
+
+Inference on base Apple Silicon (e.g., M1/M2/M3 with 8 GB or 16 GB unified memory) is heavily memory-bandwidth bound. Transferring 804 MiB of FP16 parameters over a 68 GB/s bus takes ~12.4 ms per batch of queries before compute starts.
+
+Laya-MLX provides native group-affine 4-bit (`Q4`) and 8-bit (`Q8`) weight quantization. Because the ModernBERT encoder accounts for >95% of weights, quantization targets `encoder.layers.*` while preserving calibrated FP16 decision heads.
+
+### Inspect hardware profile
+
+```bash
+uv run laya-mlx device
+```
+
+Output:
+```text
+Laya-MLX Hardware Profile & Recommendations
+===========================================
+Platform:              Darwin
+Apple Silicon:         True
+Processor/Chip:        Apple M1
+Total System Memory:   8.0 GB
+CPU Cores:             8
+-------------------------------------------
+Recommended Quantize:  Q4 (4-bit)
+Recommended Batch Size:4
+Recommended Precision: float16
+Low Memory Mode:       True
+```
+
+### In-memory quantization
+
+```python
+import laya_mlx as laya
+
+# Automatically quantize encoder to 4-bit on load and clear Metal cache aggressively
+agent = laya.load("aac6fef/laya-mlx", quantize=4, low_memory=True, batch_size=4)
+result = agent.predict("Order arrived broken", {"damaged": {"type": "noul", "instructions": "Is item damaged?"}})
+```
+
+### Export offline quantized checkpoint
+
+```bash
+uv run laya-mlx quantize \
+  --model convaiinnovations/laya \
+  --bits 4 \
+  --output models/laya-mlx-q4
+
+# Run predictions directly from quantized checkpoint
+uv run laya-mlx predict \
+  --model models/laya-mlx-q4 \
+  --state-file examples/state.json \
+  --questions examples/questions.json
+```
+
+## Local HTTP and SSE decision server
+
+Laya-MLX includes a zero-dependency standard library HTTP/SSE server suitable for local microservices and edge deployments:
+
+```bash
+uv run laya-mlx serve --model aac6fef/laya-mlx --port 8080 --quantize 4
+```
+
+### Endpoints
+
+- `GET /health`: Server status, model info, and quantization tier.
+- `POST /predict`: Standard JSON decision requests.
+- `POST /v1/decisions`: Streaming decision requests with Server-Sent Events (`stream: true` or `Accept: text/event-stream`).
+
+```bash
+# Health check
+curl http://127.0.0.1:8080/health
+
+# Decision request
+curl -X POST http://127.0.0.1:8080/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "state": "I need to change my delivery address immediately.",
+    "questions": {
+      "priority": {"type": "score", "instructions": "Urgency", "criteria": ["normal", "urgent", "critical"]}
+    }
+  }'
+```
+
+
+
 ## Tests and benchmarks
 
 ```bash

@@ -1,11 +1,12 @@
 import importlib.util
 from pathlib import Path
 
-import mlx.core as mx
 import numpy as np
 import pytest
 
-from laya_mlx.model import (
+mx = pytest.importorskip("mlx.core")
+
+from laya_mlx.model import (  # noqa: E402
     DecisionModel,
     EncoderConfig,
     HeadLayer,

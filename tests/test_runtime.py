@@ -2,14 +2,15 @@ import json
 import subprocess
 import sys
 
-import mlx.core as mx
 import numpy as np
 import pytest
 
-from laya_mlx import Agent, Router
-from laya_mlx.agent import collate_items, resolve_model
-from laya_mlx.common import render_options
-from laya_mlx.convert import convert
+mx = pytest.importorskip("mlx.core")
+
+from laya_mlx import Agent, Router  # noqa: E402
+from laya_mlx.agent import collate_items, resolve_model  # noqa: E402
+from laya_mlx.common import render_options  # noqa: E402
+from laya_mlx.convert import convert  # noqa: E402
 
 
 def test_runtime_does_not_import_torch_or_transformers():
