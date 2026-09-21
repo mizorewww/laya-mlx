@@ -88,8 +88,8 @@ class Decision:
     executed: str
     safe_directions: list
     intervened: bool
-    dead_end_risk: float
-    food_reachable: float
+    dead_end_risk: float | None
+    food_reachable: float | None
     inference_ms: float
     decision_ms: float
     input_tokens: int
@@ -102,7 +102,8 @@ class Decision:
 
 
 class LayaPolicy:
-    def __init__(self, model=None, *, guarded=True, prompt="compact", optimize=False):
+    def __init__(self, model=None, *, guarded=True, prompt="compact", optimize=False,
+                 full_metrics=True):
         from laya_mlx import Agent
 
         self.path = local_checkpoint(model)
@@ -116,11 +117,13 @@ class LayaPolicy:
             cache_prompts=optimize,
         )
         self.guarded = guarded
+        self.full_metrics = full_metrics
         if prompt not in ("compact", "detailed"):
             raise ValueError("prompt must be compact or detailed")
         self.prompt = prompt
         self.metadata = checkpoint_metadata(self.path)
         self.metadata["prompt"] = prompt
+        self.metadata["questions_per_move"] = 3 if full_metrics else 1
         self.metadata["optimization"] = (
             "compile + 16-token buckets + prefix cache" if optimize else "eager"
         )
@@ -189,11 +192,13 @@ class LayaPolicy:
             questions["risk"]["instructions"] = "Is a safe route available?"
             questions["food"]["instructions"] = "Is food reachable through empty cells?"
         inference_start = time.perf_counter()
-        output = self.agent.predict(state, questions)
+        output = self.agent.predict(state, questions if self.full_metrics else {"move": questions["move"]})
         inference_ms = (time.perf_counter() - inference_start) * 1000
         answers = output["answers"]
         probabilities = answers["move"]["probabilities"]
-        scores = [*probabilities.values(), answers["risk"]["noul"], answers["food"]["noul"]]
+        scores = list(probabilities.values())
+        if self.full_metrics:
+            scores.extend((answers["risk"]["noul"], answers["food"]["noul"]))
         if any(not math.isfinite(value) or not 0 <= value <= 1 for value in scores):
             raise ValueError("Model returned an invalid probability; no move executed")
         proposed = max(DIRECTIONS, key=probabilities.__getitem__)
@@ -209,8 +214,8 @@ class LayaPolicy:
             executed=executed,
             safe_directions=allowed,
             intervened=proposed != executed,
-            dead_end_risk=1 - answers["risk"]["noul"],
-            food_reachable=answers["food"]["noul"],
+            dead_end_risk=1 - answers["risk"]["noul"] if self.full_metrics else None,
+            food_reachable=answers["food"]["noul"] if self.full_metrics else None,
             inference_ms=inference_ms,
             decision_ms=(time.perf_counter() - started) * 1000,
             input_tokens=output["usage"]["input_tokens"],

@@ -56,6 +56,8 @@ def play(argv=None):
     )
     parser.add_argument("--model", help="Local model directory or an already cached Hub ID")
     parser.add_argument("--prompt", choices=("compact", "detailed"), default="compact")
+    parser.add_argument("--fast", action="store_true",
+                        help="Infer only movement; show auxiliary estimates as not computed")
     parser.add_argument(
         "--optimize",
         action="store_true",
@@ -99,7 +101,8 @@ def play(argv=None):
         parser.error("Interactive display needs a TTY. Use --headless for a non-interactive run.")
     print("Loading local FP16 weights; no network requests...", file=sys.stderr)
     policy = LayaPolicy(
-        args.model, guarded=not args.unassisted, prompt=args.prompt, optimize=args.optimize
+        args.model, guarded=not args.unassisted, prompt=args.prompt, optimize=args.optimize,
+        full_metrics=not args.fast,
     )
     warm = SnakeGame(args.width, args.height, args.seed + 10000, args.initial_length)
     for _ in range(6):

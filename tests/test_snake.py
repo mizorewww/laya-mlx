@@ -88,6 +88,7 @@ def test_guard_preserves_raw_probabilities_and_reports_intervention():
     policy = LayaPolicy.__new__(LayaPolicy)
     policy.agent, policy.guarded = StubAgent(), True
     policy.prompt = "compact"
+    policy.full_metrics = True
     result = policy.decide(game)
     assert result.proposed == unsafe and result.executed in safe and result.intervened
     assert result.probabilities is probabilities

@@ -142,12 +142,19 @@ def compose(game, decision, stats):
     if decision.get("intervened"):
         c.put(14, right + 20, "SHIELD", AMBER)
     c.put(16, right, "DEAD-END RISK", MUTED)
-    risk = decision.get("dead_end_risk", 0)
-    c.bar(17, right, risk, min(24, side - 9), AMBER if risk < 0.5 else RED)
-    c.put(17, right + 29, f"{risk:.2f}", AMBER if risk < 0.5 else RED)
+    risk = decision.get("dead_end_risk")
+    if risk is None:
+        c.put(17, right, "NOT COMPUTED / FAST MODE", MUTED)
+    else:
+        c.bar(17, right, risk, min(24, side - 9), AMBER if risk < 0.5 else RED)
+        c.put(17, right + 29, f"{risk:.2f}", AMBER if risk < 0.5 else RED)
     c.put(19, right, "FOOD REACHABLE", MUTED)
-    c.bar(20, right, decision.get("food_reachable", 0), min(24, side - 9), CYAN)
-    c.put(20, right + 29, f"{decision.get('food_reachable', 0):.2f}", CYAN)
+    food = decision.get("food_reachable")
+    if food is None:
+        c.put(20, right, "NOT COMPUTED / FAST MODE", MUTED)
+    else:
+        c.bar(20, right, food, min(24, side - 9), CYAN)
+        c.put(20, right + 29, f"{food:.2f}", CYAN)
     c.put(22, right, "INFERENCE", MUTED)
     c.put(22, right + 18, f"{decision.get('inference_ms', 0):5.1f} ms", FG)
     c.put(23, right, "DECISIONS", MUTED)
