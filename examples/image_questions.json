@@ -1,0 +1,15 @@
+{
+  "kind": {
+    "type": "choice",
+    "instructions": "What type of object is this?",
+    "criteria": [
+      "toy",
+      "fruit",
+      "car"
+    ]
+  },
+  "edible": {
+    "type": "noul",
+    "instructions": "Is the subject of the image edible?"
+  }
+}

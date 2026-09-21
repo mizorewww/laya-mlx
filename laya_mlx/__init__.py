@@ -12,6 +12,7 @@ from .presets import (
     triage_questions,
 )
 from .router import DEFAULT_MODELS, RouteDecision, Router
+from .vision import describe_image, image_state
 
 __version__ = "0.1.0"
 __all__ = [
@@ -31,4 +32,6 @@ __all__ = [
     "moderation_questions",
     "router_questions",
     "triage_questions",
+    "describe_image",
+    "image_state",
 ]

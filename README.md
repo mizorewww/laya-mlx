@@ -74,7 +74,7 @@ state + typed question → bidirectional encoder → decision heads → probabil
 
 Question rows are batched independently. Their bidirectional encoder representations depend on both state and question; this runtime does not claim to encode the state once and reuse its hidden states across arbitrary questions.
 
-The encoder, decision Transformer, scoring head and action head all run in MLX. Tokenization uses Hugging Face's Rust tokenizer. The original pretrained weights, question formatting, calibration and output schema are retained. This is an independent MLX port, not an official Convai Innovations release.
+The encoder, decision Transformer, scoring head and action head all run in MLX, as does the CLIP image encoder behind [image decisions](#image-decisions). Tokenization uses Hugging Face's Rust tokenizer. The original pretrained weights, question formatting, calibration and output schema are retained. This is an independent MLX port, not an official Convai Innovations release.
 
 ## Supported checkpoints
 
@@ -157,6 +157,52 @@ agent = laya.load(
 ```
 
 Loading validates every parameter name and shape. Unsupported encoders and non-default RoPE scaling fail explicitly. ModernBERT's global/local attention pattern, inclusive sliding-window boundary, distinct local/global RoPE bases, and first-layer normalization behavior are preserved.
+
+## Image decisions
+
+```python
+import laya_mlx as laya
+
+agent = laya.load("aac6fef/laya-mlx")
+result = agent.predict(
+    None,
+    {
+        "kind": {
+            "type": "choice",
+            "instructions": "What type of object is this?",
+            "criteria": ["toy", "fruit", "car"],
+        }
+    },
+    image="apple.jpg",
+)
+print(result["answers"]["kind"]["choice"])  # fruit
+```
+
+`image=` accepts a path, raw bytes or a PIL image. Laya itself stays text-only: the image is scored
+by a native MLX port of CLIP ViT-B/32 ([laion/CLIP-ViT-B-32-laion2B-s34B-b79K](https://huggingface.co/laion/CLIP-ViT-B-32-laion2B-s34B-b79K),
+first use downloads it), and the zero-shot match scores are written into the state Laya reads:
+
+```text
+This is a photograph. The image shows: fruit (96%), food (3%), vegetable (1%), screenshot (0%),
+meal (0%). Visual match for 'What type of object is this?': fruit (100%), toy (0%), car (0%).
+```
+
+Every `choice` and `score` question contributes its own option ranking; `noul` questions rely on the
+general content line. Use `laya.image_state(image, questions, state)` to build that text yourself and
+combine it with an existing text or JSON state, or `laya.describe_image(...)` to see it alone. Both
+accept `labels=` to replace the built-in content vocabulary, `top_k=` and a preloaded
+`scorer=laya_mlx.vision.load_scorer(model_id, dtype=...)` for another CLIP checkpoint.
+
+```bash
+uv run laya-mlx predict --model aac6fef/laya-mlx \
+  --image apple.jpg --questions examples/image_questions.json
+
+python examples/image_decision.py            # downloads a sample photo
+python examples/image_decision.py photo.jpg
+```
+
+Accuracy is bounded by CLIP's zero-shot accuracy on your labels. A forced choice between options
+none of which describe the picture returns whichever is least wrong, with high confidence.
 
 ## Language routing and presets
 
@@ -245,4 +291,4 @@ The preparation script checks every exported tensor against its original FP16 so
 
 ## Attribution and license
 
-Apache-2.0; see [LICENSE](https://github.com/mizorewww/laya-mlx/blob/main/LICENSE) and [NOTICE](https://github.com/mizorewww/laya-mlx/blob/main/NOTICE). Laya and its pretrained weights are by Convai Innovations and upstream contributors. Prompt construction, output formatting, language routing, email utilities and presets are adapted from [NandhaKishorM/laya](https://github.com/NandhaKishorM/laya) at commit `6a5819129eb220570792e417e49723d697efd76f`. The neural architecture is reimplemented in MLX following Laya and Hugging Face ModernBERT.
+Apache-2.0; see [LICENSE](https://github.com/mizorewww/laya-mlx/blob/main/LICENSE) and [NOTICE](https://github.com/mizorewww/laya-mlx/blob/main/NOTICE). Laya and its pretrained weights are by Convai Innovations and upstream contributors. The CLIP port follows Hugging Face `CLIPModel`; its weights are LAION's, under the MIT license. Prompt construction, output formatting, language routing, email utilities and presets are adapted from [NandhaKishorM/laya](https://github.com/NandhaKishorM/laya) at commit `6a5819129eb220570792e417e49723d697efd76f`. The neural architecture is reimplemented in MLX following Laya and Hugging Face ModernBERT.

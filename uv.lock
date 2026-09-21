@@ -656,6 +656,7 @@ dependencies = [
     { name = "mlx", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple/" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.3", source = { registry = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple/" }, marker = "python_full_version >= '3.12'" },
+    { name = "pillow" },
     { name = "tokenizers" },
 ]
 
@@ -665,7 +666,6 @@ benchmark = [
     { name = "pyarrow" },
 ]
 demo = [
-    { name = "pillow" },
     { name = "rich" },
 ]
 dev = [
@@ -686,7 +686,7 @@ requires-dist = [
     { name = "matplotlib", marker = "extra == 'benchmark'", specifier = ">=3.10" },
     { name = "mlx", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'", specifier = ">=0.32.2,<0.33" },
     { name = "numpy", specifier = ">=1.26" },
-    { name = "pillow", marker = "extra == 'demo'", specifier = ">=12,<13" },
+    { name = "pillow", specifier = ">=12,<13" },
     { name = "pyarrow", marker = "extra == 'benchmark'", specifier = ">=18" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "rich", marker = "extra == 'demo'", specifier = ">=15,<16" },

@@ -19,9 +19,10 @@ def main(argv=None):
         sub.add_argument("--revision")
         sub.add_argument("--dtype", choices=DTYPES, default="float16")
         if command == "predict":
-            source = sub.add_mutually_exclusive_group(required=True)
+            source = sub.add_mutually_exclusive_group()
             source.add_argument("--state", help="Plain text input")
             source.add_argument("--state-file", type=Path, help="JSON state file")
+            sub.add_argument("--image", type=Path, help="Image file scored with CLIP")
             sub.add_argument(
                 "--questions", required=True, type=Path, help="JSON question definitions"
             )
@@ -42,7 +43,11 @@ def main(argv=None):
         )
         print(json.dumps({"output": str(result), "dtype": args.dtype}))
     else:
-        state = args.state if args.state is not None else json.loads(args.state_file.read_text())
+        if args.state is None and args.state_file is None and args.image is None:
+            parser.error("predict needs --state, --state-file or --image")
+        state = args.state
+        if args.state_file is not None:
+            state = json.loads(args.state_file.read_text())
         questions = json.loads(args.questions.read_text())
         agent = Agent(
             args.model,
@@ -52,4 +57,5 @@ def main(argv=None):
             subfolder=args.subfolder,
             batch_size=args.batch_size,
         )
-        print(json.dumps(agent.predict(state, questions), ensure_ascii=False, indent=2))
+        result = agent.predict(state, questions, image=args.image)
+        print(json.dumps(result, ensure_ascii=False, indent=2))

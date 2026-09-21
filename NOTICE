@@ -10,5 +10,8 @@ The token sequence construction, question rendering, confidence calculation,
 presets, email utilities and language router are adapted from Laya.
 The neural network is reimplemented using Apple's MLX, following Laya's
 DecisionModel and the ModernBERT architecture in Hugging Face Transformers.
+The CLIP image encoder is reimplemented in MLX following Hugging Face
+Transformers' CLIPModel; its weights are published by LAION under the MIT
+license.
 Model weights are downloaded separately from Convai Innovations on Hugging Face;
 they are not included in this repository.

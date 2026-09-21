@@ -196,7 +196,11 @@ class Agent:
             mx.eval(result)
         return result
 
-    def system_one(self, state, questions):
+    def system_one(self, state, questions, image=None):
+        if image is not None:
+            from .vision import image_state
+
+            state = image_state(image, questions, state)
         items, internal = self.prepare(state, questions)
         answers = {}
         question_ids = list(questions)
