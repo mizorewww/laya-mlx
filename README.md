@@ -45,6 +45,13 @@ laya-snake
 
 Download once before the offline demo. Use a terminal at least 104 × 35 cells. Space pauses, ↑/↓ changes speed, R resets and Q quits. `laya-snake --max-speed` makes a fresh decision for every move without pacing. [Recording, controls and exact metric meanings](https://github.com/mizorewww/laya-mlx/blob/main/docs/SNAKE_DEMO.md).
 
+`laya-snake --fast --max-speed` asks only the movement question on every step.
+The two auxiliary estimates display `NOT COMPUTED / FAST MODE` and are recorded
+as `null`, not zero or stale probabilities. Movement prompts, the cycle safety
+shield, and the default three-question mode are unchanged. This reduces the
+amount of model work; the speedup depends on hardware and runtime. It can be
+combined with `--optimize`.
+
 `laya-snake --optimize --max-speed` enables the tested compilation and prefix-reuse path: **75.40 moves/s across 2,400 moves**, zero deaths and 2 visible safety interventions in the paired M3 Max test. This was about **6.5% faster** than its same-run eager control. [Gameplay, performance and correctness evidence](https://github.com/mizorewww/laya-mlx/blob/main/docs/SNAKE_OPTIMIZATION.md).
 
 ## Performance on M3 Max
