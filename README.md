@@ -222,6 +222,17 @@ uv run laya-mlx predict \
 
 The export contains `model.safetensors`, encoder and agent configurations, tokenizer files and `mlx_config.json`. Existing output directories are never overwritten. This is a parameter-name/dtype conversion, not quantization or retraining. The source checkpoints already store FP16 weights; choosing FP32 increases arithmetic precision, not the precision of the source weights.
 
+## Shadowing a hosted model
+
+[stuntdouble](https://github.com/ReallyArtificial/stuntdouble) can run Laya beside a hosted System One endpoint on real traffic and report whether the application decision would change. Its `sidecars/laya.py` (standard library only) exposes this package on `POST /v1/systemone`:
+
+```bash
+pip install laya-mlx
+python sidecars/laya.py --port 8011   # from the stuntdouble checkout
+```
+
+Then add `{ "name": "laya", "url": "http://127.0.0.1:8011" }` as a double. A first run against Kev-0.8B on 28 authored agent-decision cases, 300 rows of Kev's frozen suite, and JevBench's 111 public hard items is in [its reports folder](https://github.com/ReallyArtificial/stuntdouble/tree/main/reports/2026-09-22-m3pro-kev0.8b-vs-laya), with Laya's p50 latency, agreement by primitive, Brier, and ECE on that machine. Independent project, not affiliated with this one.
+
 ## Tests and benchmarks
 
 ```bash
