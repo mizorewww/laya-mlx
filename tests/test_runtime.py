@@ -1,6 +1,7 @@
 import json
 import subprocess
 import sys
+import threading
 
 import mlx.core as mx
 import numpy as np
@@ -136,6 +137,32 @@ def test_cached_prefixes_preserve_inputs_under_mutation_truncation_and_eviction(
             assert original.prepare(state, questions) == cached.prepare(state, questions)
             assert len(cached._prefix_cache.entries) <= 3
     assert cached.prepare("", {}) == ([], [])
+
+
+def test_cached_prefixes_are_safe_under_concurrent_preparation(tiny_checkpoint, questions):
+    agent = Agent(tiny_checkpoint, dtype="float32", cache_prompts=True)
+    agent._prefix_cache.capacity = 3
+    expected = agent.prepare("hello", questions)
+    barrier = threading.Barrier(8)
+    outputs, errors = [], []
+
+    def prepare_repeatedly():
+        try:
+            barrier.wait()
+            for _ in range(10):
+                outputs.append(agent.prepare("hello", questions))
+        except Exception as error:
+            errors.append(error)
+
+    threads = [threading.Thread(target=prepare_repeatedly) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert not errors
+    assert outputs == [expected] * 80
+    assert len(agent._prefix_cache.entries) <= agent._prefix_cache.capacity
 
 
 def test_compiled_bucket_path_preserves_predictions_and_handles_shape_changes(

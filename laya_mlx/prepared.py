@@ -2,6 +2,7 @@
 
 from collections import OrderedDict
 from dataclasses import dataclass
+import threading
 
 from .common import QTYPES, build_prefix, render_options, serialize_state
 
@@ -16,6 +17,7 @@ class PrefixCache:
     def __init__(self, capacity=128):
         self.capacity = capacity
         self.entries = OrderedDict()
+        self._lock = threading.RLock()
 
     def prepare(self, agent, state, questions):
         if not isinstance(questions, dict):
@@ -42,13 +44,14 @@ class PrefixCache:
                 q["ins"],
                 tuple(options),
             )
-            if key not in self.entries:
-                ids, markers = build_prefix(tok, q, head_len)
-                self.entries[key] = PreparedQuestion(tuple(ids), tuple(markers))
-                if len(self.entries) > self.capacity:
-                    self.entries.popitem(last=False)
-            self.entries.move_to_end(key)
-            prefix = self.entries[key]
+            with self._lock:
+                if key not in self.entries:
+                    ids, markers = build_prefix(tok, q, head_len)
+                    self.entries[key] = PreparedQuestion(tuple(ids), tuple(markers))
+                    if len(self.entries) > self.capacity:
+                        self.entries.popitem(last=False)
+                self.entries.move_to_end(key)
+                prefix = self.entries[key]
             room = max(0, max_len - len(prefix.ids) - 1)
             ids = (list(prefix.ids) + state_ids[:room] + [tok.sep_token_id])[:max_len]
             markers = [m for m in prefix.markers if m < max_len]
