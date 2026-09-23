@@ -4,11 +4,11 @@
 
 **在 Apple Silicon 上本地运行开放权重的结构化决策模型。**
 
-单个短问题端到端中位耗时 **13.4 ms**；multilingual 检查点为 **7.4 ms**。**0 个输出 token**，原生 MLX，无 PyTorch / Transformers 推理依赖，无云端 API。
+单个短问题端到端中位耗时 **17.75 ms**；multilingual 检查点为 **10.91 ms**。**0 个输出 token**，原生 MLX，无 PyTorch / Transformers 推理依赖，无云端 API。
 
 [English](README.md) · [完整 benchmark](BENCHMARKS.md) · [Snake 使用说明](docs/SNAKE_DEMO.md) · [30 秒 MP4](docs/assets/snake-demo.mp4)
 
-GIF 使用真实游戏记录按原始时间戳渲染。每步都调用 Laya，界面显示循环路径安全层及其接管次数。上面的 13.4 / 7.4 ms 来自**单问题 API 基准**，并非每步批量回答三个问题的 Snake 帧耗时；游戏速度见[独立报告](docs/SNAKE_BENCHMARKS.md)。
+GIF 使用真实游戏记录按原始时间戳渲染。每步都调用 Laya，界面显示循环路径安全层及其接管次数。上面的 17.75 / 10.91 ms 来自**单问题 API 基准**，并非每步批量回答三个问题的 Snake 帧耗时；游戏速度见[独立报告](docs/SNAKE_BENCHMARKS.md)。
 
 ## 快速开始
 
@@ -49,12 +49,12 @@ laya-snake
 
 | FP16，端到端 | Laya 421M | Multilingual 322M |
 |---|---:|---:|
-| 单个短问题 P50 | **13.42 ms** | **7.39 ms** |
-| 单个短问题 P95 | **13.92 ms** | **7.79 ms** |
-| 50 问题吞吐量 | **146.8 q/s** | **395.0 q/s** |
+| 单个短问题 P50 | **17.75 ms** | **10.91 ms** |
+| 单个短问题 P95 | **21.45 ms** | **19.48 ms** |
+| 50 问题吞吐量 | **143.3 q/s** | **402.2 q/s** |
 | 单个短问题 MLX 峰值分配 | **943.6 MiB** | **687.6 MiB** |
 
-硬件为 M3 Max（40 核 GPU、128 GiB 内存）。计时包含提示准备、tokenization、张量构建、GPU 同步推理、校准及结果格式化，排除模型加载。50 问题吞吐量使用 `batch_size=64`，公开 API 默认为 16。
+硬件为 M3 Max（40 核 GPU、128 GiB 内存）。数据来自仓库中 2026-09-22 的基准测试。计时包含提示准备、tokenization、张量构建、GPU 同步推理、校准及结果格式化，排除模型加载。50 问题吞吐量使用 `batch_size=64`，公开 API 默认为 16。
 
 **移植一致性：**三个检查点在 FP32 和 FP16 下均通过 **63/63** 验证问题的上游 argmax 对齐，合计 378/378；每个配置各执行 100 次重复调用，结果有限、确定，测得活跃内存增长为零。它验证移植保真度，不代表所有实际问题都能答对。[完整误差和原始记录](BENCHMARKS.md)。
 

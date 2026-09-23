@@ -4,7 +4,7 @@
 
 **Open-weight typed decisions, running natively on Apple Silicon.**
 
-**13.4 ms** median end-to-end for a short English typed decision. **7.4 ms** with the multilingual checkpoint. **0 output tokens.** Local MLX inference, with no PyTorch, Transformers runtime, or cloud API.
+**17.75 ms** median end-to-end for a short English typed decision. **10.91 ms** with the multilingual checkpoint. **0 output tokens.** Local MLX inference, with no PyTorch, Transformers runtime, or cloud API.
 
 [中文](https://github.com/mizorewww/laya-mlx/blob/main/README.zh-CN.md) · [Benchmarks](https://github.com/mizorewww/laya-mlx/blob/main/BENCHMARKS.md) · [Snake demo](https://github.com/mizorewww/laya-mlx/blob/main/docs/SNAKE_DEMO.md) · [Hugging Face weights](https://huggingface.co/aac6fef/laya-mlx)
 
@@ -51,12 +51,12 @@ Download once before the offline demo. Use a terminal at least 104 × 35 cells. 
 
 | FP16, end-to-end | Laya 421M | Multilingual 322M |
 |---|---:|---:|
-| One short question, P50 | **13.42 ms** | **7.39 ms** |
-| One short question, P95 | **13.92 ms** | **7.79 ms** |
-| 50-question throughput | **146.8 q/s** | **395.0 q/s** |
+| One short question, P50 | **17.75 ms** | **10.91 ms** |
+| One short question, P95 | **21.45 ms** | **19.48 ms** |
+| 50-question throughput | **143.3 q/s** | **402.2 q/s** |
 | Peak MLX allocation, one short question | **943.6 MiB** | **687.6 MiB** |
 
-M3 Max, 40 GPU cores, 128 GiB memory. Timing includes prompt preparation, tokenization, tensors, synchronized inference, calibration and result formatting; model loading is excluded. The 50-question measurement uses `batch_size=64`; the API defaults to 16. Different lengths, question counts and runtime conditions change latency. [Full method and every timing sample](https://github.com/mizorewww/laya-mlx/blob/main/BENCHMARKS.md).
+M3 Max, 40 GPU cores, 128 GiB memory. These figures use the committed 2026-09-22 benchmark run. Timing includes prompt preparation, tokenization, tensors, synchronized inference, calibration and result formatting; model loading is excluded. The 50-question measurement uses `batch_size=64`; the API defaults to 16. Different lengths, question counts and runtime conditions change latency. [Full method and every timing sample](https://github.com/mizorewww/laya-mlx/blob/main/BENCHMARKS.md).
 
 **Port fidelity:** all three checkpoints matched the upstream selected answer on **63/63 validation questions in both FP32 and FP16** — 378/378 comparisons. Each configuration also passed 100 repeated finite, deterministic calls with zero measured active-memory growth. This measures fidelity on those fixtures, not accuracy on every possible question. [Probability errors and validation](https://github.com/mizorewww/laya-mlx/blob/main/BENCHMARKS.md#numerical-parity-and-stability).
 

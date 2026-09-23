@@ -21,7 +21,7 @@ The extra maximum-speed clip comes from a separate 20.01-second truecolor TTY ru
 >
 > Laya-MLX runs open-weight typed decision models on Apple Silicon. Watch a 322M model play Snake with a visible cycle safety layer: real probabilities, measured latency, 0 output tokens, no inference API.
 >
-> One-question API benchmark: 7.39 ms p50 on M3 Max.
+> One-question API benchmark: 10.91 ms p50 on M3 Max.
 >
 > `pip install laya-mlx`
 >
@@ -33,7 +33,7 @@ The extra maximum-speed clip comes from a separate 20.01-second truecolor TTY ru
 >
 > Laya-MLX：在 Mac 上本地运行的开放权重决策模型。这个 3.22 亿参数的贪吃蛇 demo，每一步都显示真实方向概率、推理耗时和安全层接管次数。
 >
-> 0 个输出 token，无推理 API。M3 Max 单问题基准 P50 为 7.39 ms。
+> 0 个输出 token，无推理 API。M3 Max 单问题基准 P50 为 10.91 ms。
 >
 > `pip install laya-mlx`
 >
@@ -43,4 +43,4 @@ The extra maximum-speed clip comes from a separate 20.01-second truecolor TTY ru
 
 The optimized complete Snake loop measured **75.40 moves/second over 2,400 moves**, with zero deaths, 2 safety interventions and 2,400/2,400 executed-action agreement with the paired eager control. It was about **6.5% faster in that run**. This includes planning, inference, Rich composition, ANSI serialization and game updates, but excludes the terminal emulator's painting.
 
-Use the [optimization report](SNAKE_OPTIMIZATION.md) when sharing that number. The 7.39 ms headline describes the separate one-question API fixture; it is not the frame time of this three-question Snake demonstration. Neither result is a cloud-API comparison or evidence of unaided Snake reasoning.
+Use the [optimization report](SNAKE_OPTIMIZATION.md) when sharing that number. The 10.91 ms headline describes the separate one-question API fixture from the committed 2026-09-22 run; it is not the frame time of this three-question Snake demonstration. Neither result is a cloud-API comparison or evidence of unaided Snake reasoning.
