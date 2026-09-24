@@ -33,6 +33,7 @@ demo = ["rich>=15,<16", "Pillow>=12,<13"]
 [project.scripts]
 laya-mlx = "laya_mlx.cli:main"
 laya-snake = "laya_mlx.snake.cli:main"
+laya-flappy = "laya_mlx.flappy.cli:main"
 
 [project.urls]
 Repository = "https://github.com/mizorewww/laya-mlx"
