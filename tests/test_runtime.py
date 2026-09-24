@@ -82,6 +82,14 @@ def test_missing_and_misshaped_weights_fail_loudly(tiny_checkpoint):
         {"type": "score", "instructions": "x", "criteria": {}},
         {"type": "noul", "instructions": "x", "criteria": ["a"]},
         {"type": "noul"},
+        # Upstream #156: any key but true/false used to be dropped for the default pair.
+        {"type": "noul", "instructions": "x", "criteria": {"yes": "a", "no": "b"}},
+        {"type": "choice", "instructions": "x", "criteria": ["a", "b"], "labels": {}},
+        {"type": "noul", "instructions": "x", "labels": {"true": "A"}},
+        {"type": "noul", "instructions": "x", "labels": {"false": "A", "true": "A"}},
+        {"type": "noul", "instructions": "x", "labels": {"false": " ", "true": "A"}},
+        {"type": "noul", "instructions": "x", "labels": {"false": 0, "true": 1}},
+        {"type": "noul", "instructions": "x", "labels": ["B", "A"]},
     ],
 )
 def test_invalid_questions_rejected(question):
@@ -107,6 +115,42 @@ def test_structured_criteria_and_mask_injection(tiny_checkpoint):
         "zero: 0",
         "no: false",
     ]
+
+
+def test_noul_labels_change_only_the_model_facing_words(tiny_checkpoint):
+    default = Agent._to_internal({"type": "noul", "instructions": "x"})
+    assert render_options(default) == [
+        "false: no, the statement does not hold",
+        "true: yes, the statement holds",
+    ]
+    relabelled = Agent._to_internal(
+        {
+            "type": "noul",
+            "instructions": "x",
+            "criteria": {True: "the review is positive", "false": "the review is negative"},
+            "labels": {"true": " A ", "false": "B"},
+        }
+    )
+    assert render_options(relabelled) == [
+        "B: the review is negative",
+        "A: the review is positive",
+    ]
+    agent = Agent(tiny_checkpoint, dtype="float32")
+    result = agent.predict(
+        "hello",
+        {"q": {"type": "noul", "instructions": "x", "labels": {"false": "no", "true": "yes"}}},
+    )
+    assert 0 <= result["answers"]["q"]["noul"] <= 1
+
+
+def test_cached_prefixes_distinguish_noul_labels(tiny_checkpoint):
+    original = Agent(tiny_checkpoint, dtype="float32")
+    cached = Agent(tiny_checkpoint, dtype="float32", cache_prompts=True)
+    for labels in (None, {"false": "no", "true": "yes"}, {"false": "B", "true": "A"}):
+        q = {"type": "noul", "instructions": "x"}
+        if labels:
+            q["labels"] = labels
+        assert original.prepare("hello", {"q": q}) == cached.prepare("hello", {"q": q})
 
 
 def test_collation_never_marks_padding_as_an_option():
