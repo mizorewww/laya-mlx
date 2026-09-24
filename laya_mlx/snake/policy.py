@@ -21,7 +21,11 @@ def local_checkpoint(value=None):
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
     if value is None:
-        for path in ("models/hub/laya-multilingual-mlx", "models/laya-multilingual"):
+        for path in (
+            "models/snake",
+            "models/hub/laya-multilingual-mlx",
+            "models/laya-multilingual",
+        ):
             if Path(path).is_dir():
                 return Path(path)
         value = DEFAULT_MODEL

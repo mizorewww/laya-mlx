@@ -1,6 +1,9 @@
 import json
+import os
 import random
 import socket
+import subprocess
+import sys
 from collections import deque
 from pathlib import Path
 
@@ -110,6 +113,34 @@ def test_missing_local_model_fails_without_a_network_attempt(monkeypatch, tmp_pa
     with pytest.raises(FileNotFoundError, match="Download it"):
         local_checkpoint("nonexistent-snake-demo-test/no-cache")
     assert attempts == []
+
+
+def test_default_discovery_finds_the_directory_the_download_hint_recommends(monkeypatch, tmp_path):
+    """local_checkpoint's own error tells users to download into models/snake."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "models" / "snake").mkdir(parents=True)
+    assert local_checkpoint() == Path("models/snake")
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(
+    os.environ.get("LAYA_MLX_LIVE") != "1",
+    reason="Set LAYA_MLX_LIVE=1 to run the demo against real downloaded weights",
+)
+def test_snake_cli_plays_offline_with_the_auto_discovered_checkpoint():
+    """The documented `laya-snake` run, with no --model, end to end on real weights."""
+    repo = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [sys.executable, "-m", "laya_mlx.snake", "--headless", "--steps", "5"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        timeout=900,
+    )
+    assert result.returncode == 0, result.stderr
+    report = json.loads(result.stdout)
+    assert report["inference_calls"] == 5
+    assert report["network"] == "offline"
 
 
 def test_small_or_odd_boards_are_rejected():

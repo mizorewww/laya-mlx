@@ -100,6 +100,7 @@ Load these directly with `laya.load("aac6fef/laya-mlx")`, or use the original ch
 gh repo clone mizorewww/laya-mlx
 cd laya-mlx
 uv sync --extra demo
+hf download aac6fef/laya-multilingual-mlx --local-dir models/snake
 uv run --extra demo laya-snake
 ```
 
