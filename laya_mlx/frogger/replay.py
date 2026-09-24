@@ -9,109 +9,11 @@ import subprocess
 from bisect import bisect_right
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from laya_mlx.snake.replay import TerminalRaster, load_record
 
-from .ui import BG, DIM, MUTED, compose
+from .ui import compose
 
-
-def load_record(path):
-    metadata = None
-    frames = []
-    for line in path.read_text().splitlines():
-        event = json.loads(line)
-        if event["type"] == "metadata":
-            metadata = event
-        elif event["type"] == "frame":
-            frames.append(event)
-    if metadata is None or not frames:
-        raise ValueError("Recording must contain metadata and real decision frames")
-    times = [frame["at"] for frame in frames]
-    if (
-        any(not math.isfinite(t) or t < 0 for t in times)
-        or times != sorted(times)
-        or len(set(times)) != len(times)
-    ):
-        raise ValueError("Recording timestamps must strictly increase")
-    return metadata, frames
-
-
-class TerminalRaster:
-    def __init__(
-        self,
-        columns,
-        rows,
-        *,
-        width=1920,
-        height=1080,
-        font=None,
-        title="laya-snake  /  real recorded decisions",
-    ):
-        choices = (
-            [Path(font)]
-            if font
-            else [
-                Path("/System/Library/Fonts/Menlo.ttc"),
-                Path("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"),
-            ]
-        )
-        font_path = next((p for p in choices if p.is_file()), None)
-        if font_path is None:
-            raise FileNotFoundError("A monospace font is required; pass --font /path/to/font.ttf")
-        size = min(int((width - 120) / (columns * 0.61)), int((height - 110) / rows))
-        self.font = ImageFont.truetype(str(font_path), size)
-        self.cw = max(1, round(self.font.getlength("M")))
-        self.ch = size + 1
-        self.width, self.height = width, height
-        self.x = (width - columns * self.cw) // 2
-        self.y = (height - rows * self.ch) // 2 + 16
-        self.cache = {}
-        self.base = Image.new("RGB", (width, height), "#05090c")
-        draw = ImageDraw.Draw(self.base)
-        box = (
-            self.x - 22,
-            self.y - 42,
-            self.x + columns * self.cw + 22,
-            self.y + rows * self.ch + 14,
-        )
-        draw.rounded_rectangle(box, radius=18, fill=BG, outline=DIM, width=2)
-        for index, color in enumerate(("#ed6a67", "#eeb65a", "#5ec486")):
-            x = self.x + index * 22
-            draw.ellipse((x, self.y - 25, x + 11, self.y - 14), fill=color)
-        title_font = ImageFont.truetype(str(font_path), max(12, size - 9))
-        draw.text(
-            (width // 2, self.y - 24),
-            title,
-            font=title_font,
-            fill=MUTED,
-            anchor="mt",
-        )
-
-    def glyph(self, character, color):
-        key = character, color
-        if key not in self.cache:
-            glyph = Image.new("RGBA", (self.cw, self.ch), (0, 0, 0, 0))
-            draw = ImageDraw.Draw(glyph)
-            if character == "█":
-                draw.rectangle((0, 0, self.cw, self.ch), fill=color)
-            elif character == "▀":
-                draw.rectangle((0, 0, self.cw, self.ch // 2), fill=color)
-            elif character == "▄":
-                draw.rectangle((0, self.ch // 2, self.cw, self.ch), fill=color)
-            elif character == "━":
-                draw.rectangle((0, self.ch // 2, self.cw, self.ch // 2 + 1), fill=color)
-            else:
-                draw.text((0, -1), character, font=self.font, fill=color, anchor="la")
-            self.cache[key] = glyph
-        return self.cache[key]
-
-    def render(self, canvas):
-        frame = self.base.copy()
-        for row, (characters, colors) in enumerate(zip(canvas.chars, canvas.styles)):
-            for column, (character, color) in enumerate(zip(characters, colors)):
-                if character != " ":
-                    glyph = self.glyph(character, color)
-                    frame.paste(glyph, (self.x + column * self.cw, self.y + row * self.ch), glyph)
-        return frame
+__all__ = ["TerminalRaster", "load_record", "main"]
 
 
 def main(argv=None):
@@ -167,7 +69,12 @@ def main(argv=None):
 
     canvas = canvas_at(start)
     raster = TerminalRaster(
-        canvas.width, canvas.height, width=args.width, height=args.height, font=args.font
+        canvas.width,
+        canvas.height,
+        width=args.width,
+        height=args.height,
+        font=args.font,
+        title="laya-frogger  /  real recorded decisions",
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     if args.output.suffix == ".png":

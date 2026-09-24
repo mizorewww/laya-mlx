@@ -47,6 +47,8 @@ Download once before the offline demo. Use a terminal at least 104 × 35 cells. 
 
 `laya-snake --optimize --max-speed` enables the tested compilation and prefix-reuse path: **75.40 moves/s across 2,400 moves**, zero deaths and 2 visible safety interventions in the paired M3 Max test. This was about **6.5% faster** than its same-run eager control. [Gameplay, performance and correctness evidence](https://github.com/mizorewww/laya-mlx/blob/main/docs/SNAKE_OPTIMIZATION.md).
 
+`laya-frogger` runs Frogger with the same layout, controls, recording format and safety rules. The frog crosses a road and a river of moving logs, and the level rises every 3 crossings. [Frogger demo](https://github.com/mizorewww/laya-mlx/blob/main/docs/FROGGER_DEMO.md) · [Frogger speed and stability](https://github.com/mizorewww/laya-mlx/blob/main/docs/FROGGER_BENCHMARKS.md).
+
 ## Performance on M3 Max
 
 | FP16, end-to-end | Laya 421M | Multilingual 322M |
