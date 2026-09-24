@@ -1,0 +1,32 @@
+{
+  "source_recording": "flappy-showcase.jsonl",
+  "source_sha256": "1a1493985e09d1219e2561c6827ba564a1390121ff4c4a091232e87252f776f2",
+  "model": {
+    "name": "aac6fef/laya-multilingual-mlx",
+    "source_revision": "052592a15d198d9ad47da779604259b10b47b7aa",
+    "weight_sha256_from_manifest": "7fc5834af4d8fdfb268d272a9d1a66e5819a0daac98241651c4c888cc43adff1",
+    "hardware": "M1",
+    "platform": "macOS-26.6.2-arm64-arm-64bit",
+    "python": "3.12.14",
+    "versions": {
+      "mlx": "0.32.2",
+      "numpy": "2.5.3",
+      "rich": "15.0.0",
+      "tokenizers": "0.23.2",
+      "huggingface-hub": "1.32.0"
+    },
+    "network": "offline",
+    "policy": "Laya probabilities over planner features; optional lookahead shield",
+    "source_sha256": "2004999d8d3db7604fee43057dc28a5cdf1ab6eeadb7293aa98399d05182d3f1",
+    "prompt": "compact",
+    "optimization": "eager"
+  },
+  "playback_speed": 1,
+  "source_start_seconds": 30.0,
+  "source_end_seconds": 60.0,
+  "video_fps": 30,
+  "video_frames": 900,
+  "gif_seconds": 15,
+  "renderer_source_sha256": "dd9d92f23a79e156e9d677661709ffb865b878837b21dde8ee899686e4cd72fd",
+  "note": "Rendered from real inference records using the live terminal layout. Original wall-clock timing; no fabricated probabilities or time compression. Video is sampled at its stated frame rate."
+}

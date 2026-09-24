@@ -45,6 +45,8 @@ laya-snake
 
 `laya-snake --optimize --max-speed` 启用已验证的编译与前缀复用路径。同轮成对测试中，2,400 步达到 **75.40 步/秒**，零死亡、安全接管 2 次，比 eager 基线快约 **6.5%**。[完整游戏表现、优化测量和一致性证据](docs/SNAKE_OPTIMIZATION.md)。
 
+`laya-flappy` 是第二个游戏，界面布局、操作、录制格式和安全规则与贪吃蛇相同。缺口会在顶部、底部和中间之间跳动，每 10 根管道变窄一次。[Flappy 使用说明](docs/FLAPPY_DEMO.md) · [Flappy 速度与稳定性](docs/FLAPPY_BENCHMARKS.md)。
+
 ## M3 Max 实测
 
 | FP16，端到端 | Laya 421M | Multilingual 322M |
