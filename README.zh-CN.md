@@ -45,6 +45,8 @@ laya-snake
 
 `laya-snake --optimize --max-speed` 启用已验证的编译与前缀复用路径。同轮成对测试中，2,400 步达到 **75.40 步/秒**，零死亡、安全接管 2 次，比 eager 基线快约 **6.5%**。[完整游戏表现、优化测量和一致性证据](docs/SNAKE_OPTIMIZATION.md)。
 
+`laya-frogger` 是青蛙过河游戏，界面布局、操作、录制格式和安全规则与贪吃蛇相同。青蛙要穿过马路和漂着圆木的河流，每过河 3 次升一级。[Frogger 使用说明](docs/FROGGER_DEMO.md) · [Frogger 速度与稳定性](docs/FROGGER_BENCHMARKS.md)。
+
 ## M3 Max 实测
 
 | FP16，端到端 | Laya 421M | Multilingual 322M |
