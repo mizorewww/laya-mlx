@@ -94,6 +94,7 @@ class Agent:
         dtype="float16",
         revision=None,
         batch_size=16,
+        max_len=None,
         compile=False,
         pad_to_multiple=None,
         cache_prompts=False,
@@ -109,6 +110,11 @@ class Agent:
         )
         self.dtype = DTYPES[dtype]
         self.batch_size = batch_size
+        if max_len is not None and (
+            isinstance(max_len, bool) or not isinstance(max_len, int) or max_len < 1
+        ):
+            raise ValueError("max_len must be a positive integer or None")
+        self.max_len = max_len
         if pad_to_multiple is not None and (
             not isinstance(pad_to_multiple, int)
             or isinstance(pad_to_multiple, bool)
@@ -127,7 +133,7 @@ class Agent:
         if "encoder" not in self.cfg or "head_layers" not in self.cfg:
             raise ValueError("Laya config must specify encoder and head_layers")
         enc_cfg = EncoderConfig.from_dict(self.encoder_cfg)
-        max_len = self.cfg.get("max_len", 512)
+        max_len = self.max_len or self.cfg.get("max_len", 512)
         head_max_len = self.cfg.get("head_max_len", 192)
         if not 4 < head_max_len < max_len <= enc_cfg.max_position_embeddings:
             raise ValueError("Expected 4 < head_max_len < max_len <= max_position_embeddings")
@@ -214,7 +220,11 @@ class Agent:
         for qid, definition in questions.items():
             q = self._to_internal(definition)
             ids, markers = build_sequence(
-                self.tok, state, q, self.cfg.get("max_len", 512), self.cfg.get("head_max_len", 192)
+                self.tok,
+                state,
+                q,
+                self.max_len or self.cfg.get("max_len", 512),
+                self.cfg.get("head_max_len", 192),
             )
             if len(markers) != len(render_options(q)):
                 raise ValueError(f"Question {qid!r} has too many options for the token budget")
@@ -240,7 +250,7 @@ class Agent:
                 chunk,
                 self.tok.pad_token_id,
                 pad_to_multiple=self.pad_to_multiple,
-                max_length=self.cfg.get("max_len", 512),
+                max_length=self.max_len or self.cfg.get("max_len", 512),
             )
             logits, act = self.forward(batch)
             logits, act = np.asarray(logits), np.asarray(act)
