@@ -17,6 +17,7 @@ from .common import (
     clamp_temperature,
     confidence_from_probs,
     render_options,
+    resolve_noul_labels,
     temp_bucket,
 )
 from .model import DecisionModel, EncoderConfig, sanitize_weights
@@ -199,10 +200,26 @@ class Agent:
                 raise ValueError("Score criteria must be a nonempty list")
         elif criteria is not None and not isinstance(criteria, dict):
             raise ValueError("Noul criteria must be a dictionary with false/true descriptions")
+        elif criteria is not None:
+            # render_options reads the two descriptions by name, so any other key never reached
+            # the model: it was replaced by the default pair without a word (upstream #156).
+            criteria = {str(k).lower(): v for k, v in criteria.items()}
+            if not set(criteria) <= {"true", "false"}:
+                raise ValueError(
+                    "Noul criteria must be keyed only 'true'/'false', got "
+                    f"{sorted(criteria)}; set 'labels' to change the words the model reads"
+                )
+        if "labels" in qdef:
+            if kind != "noul":
+                raise ValueError("labels is only supported for noul questions")
+            resolve_noul_labels(qdef["labels"])
         instructions = qdef["instructions"]
         if not isinstance(instructions, str):
             instructions = json.dumps(instructions)
-        return {"t": kind, "ins": instructions, "crit": criteria}
+        internal = {"t": kind, "ins": instructions, "crit": criteria}
+        if "labels" in qdef:
+            internal["labels"] = qdef["labels"]
+        return internal
 
     def prepare(self, state, questions):
         """Construct upstream-compatible CPU inputs, useful for parity and profiling."""

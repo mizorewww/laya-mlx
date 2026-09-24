@@ -28,9 +28,30 @@ def render_criterion(value) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(", ", ": "), default=str)
 
 
+_DEFAULT_NOUL_LABELS = {"false": "false", "true": "true"}
+_LABELS_ERROR = "noul labels must map exactly 'false' and 'true' to distinct non-empty strings"
+
+
+def resolve_noul_labels(labels=None):
+    """The model-facing words for a noul's two slots, as (false, true). Upstream v0.3.20 (#156)."""
+    if labels is None:
+        labels = _DEFAULT_NOUL_LABELS
+    if not isinstance(labels, dict) or set(labels) != {"false", "true"}:
+        raise ValueError(_LABELS_ERROR)
+    false_label, true_label = labels["false"], labels["true"]
+    if not isinstance(false_label, str) or not isinstance(true_label, str):
+        raise ValueError(_LABELS_ERROR)
+    false_label, true_label = false_label.strip(), true_label.strip()
+    if not false_label or not true_label or false_label == true_label:
+        raise ValueError(_LABELS_ERROR)
+    return false_label, true_label
+
+
 def render_options(q: Dict) -> List[str]:
-    """Render option texts in label-index order. Noul is always [false, true]."""
+    """Render option texts in label-index order. Noul semantic order is always [false, true]."""
     t, crit = q["t"], q.get("crit")
+    if t != "noul" and "labels" in q:
+        raise ValueError("labels is only supported for noul questions")
     if t == "choice":
         # only None/"" mean "no description"; 0 and False are legitimate criterion values
         return [
@@ -40,15 +61,18 @@ def render_options(q: Dict) -> List[str]:
     if t == "score":
         return ["level %d: %s" % (i, render_criterion(c)) for i, c in enumerate(crit)]
     crit = crit or {}
+    false_label, true_label = resolve_noul_labels(q.get("labels"))
     false_crit, true_crit = crit.get("false"), crit.get("true")
     return [
-        "false: "
+        false_label
+        + ": "
         + (
             render_criterion(false_crit)
             if false_crit not in (None, "")
             else "no, the statement does not hold"
         ),
-        "true: "
+        true_label
+        + ": "
         + (
             render_criterion(true_crit)
             if true_crit not in (None, "")

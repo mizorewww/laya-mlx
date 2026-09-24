@@ -141,6 +141,12 @@ print(result["answers"])
 
 The default precision is FP16. Use `dtype="float32"` for closer numerical agreement. Probabilities can differ slightly across precisions even when the selected label agrees; see the measured errors in [BENCHMARKS.md](https://github.com/mizorewww/laya-mlx/blob/main/BENCHMARKS.md). BF16 can be requested but is not part of the published validation matrix.
 
+Following upstream v0.3.20 (#156), a `noul` can show the model other words for its two slots with `labels`, keyed exactly `false` and `true`; the result is still P(true). On the English checkpoint the default `false:` / `true:` pair can outweigh the state. `criteria` on a `noul` must be keyed `true`/`false`: any other key used to be replaced by the default descriptions without a word, and is now rejected.
+
+```python
+{"type": "noul", "instructions": "Is this review positive?", "labels": {"false": "no", "true": "yes"}}
+```
+
 Following upstream v0.3.5, fitted calibration temperatures are clamped to `[0.5, 5.0]` before use: the shipped `choice:11+` bucket is 0.1006, which would sharpen logits ~10x and report a coin flip as near-certainty. The checkpoint's raw values remain available as `agent.temperature_raw` and `agent.temperature_by_options_raw`, and a `RuntimeWarning` names every clamped bucket at load.
 
 `batch_size=16` caps the number of questions per forward pass; larger requests are processed in chunks. Increase it when memory allows. `device="gpu"` or `device="cpu"` selects a device explicitly; otherwise MLX's default device is used.
