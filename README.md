@@ -219,6 +219,9 @@ LAYA_DEVICE=gpu LAYA_PRELOAD=1 uv run laya-mlx-serve
 The default bind address is `0.0.0.0:8000`. `LAYA_HOST`, `LAYA_PORT`,
 `LAYA_DEVICE`, `LAYA_DTYPE`, `LAYA_PRELOAD`, `LAYA_MODELS`,
 `LAYA_AUTO_TASK`, `LAYA_API_KEY`, and `LAYA_LOG_LEVEL` configure the server.
+`LAYA_MAX_LEN` optionally overrides the checkpoint context length for all
+models; it must be a positive integer and cannot exceed a model's supported
+context length.
 `GET /health` reports loaded checkpoints. When `LAYA_API_KEY` is set, requests
 must include an `Authorization: Bearer <key>` header.
 

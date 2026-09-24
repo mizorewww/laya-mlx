@@ -9,7 +9,8 @@ Environment variables:
 ``LAYA_HOST`` (``0.0.0.0``), ``LAYA_PORT`` (``8000``), ``LAYA_DEVICE`` (MLX
 default), ``LAYA_DTYPE`` (``float16``), ``LAYA_PRELOAD`` (``1``),
 ``LAYA_MODELS`` (all models), ``LAYA_AUTO_TASK`` (``0``), ``LAYA_API_KEY``
-(unset), and ``LAYA_LOG_LEVEL`` (``info``).
+(unset), ``LAYA_MAX_LEN`` (checkpoint default), and ``LAYA_LOG_LEVEL``
+(``info``).
 """
 
 import asyncio
@@ -29,6 +30,19 @@ def _env_bool(name: str, default: bool) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_positive_int(name: str) -> Optional[int]:
+    value = os.environ.get(name)
+    if value is None or not value.strip():
+        return None
+    try:
+        result = int(value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a positive integer") from exc
+    if result < 1:
+        raise ValueError(f"{name} must be a positive integer")
+    return result
 
 
 def _resolve_model(model: Optional[str]) -> Optional[str]:
@@ -57,6 +71,7 @@ def build_router():
         device=os.environ.get("LAYA_DEVICE") or None,
         auto_task_detection=_env_bool("LAYA_AUTO_TASK", False),
         dtype=os.environ.get("LAYA_DTYPE", "float16"),
+        max_len=_env_positive_int("LAYA_MAX_LEN"),
     )
     if _env_bool("LAYA_PRELOAD", True):
         router.preload(names)

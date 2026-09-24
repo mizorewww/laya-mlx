@@ -23,7 +23,8 @@ class PrefixCache:
         if not questions:
             return [], []
         tok = agent.tok
-        max_len, head_len = agent.cfg.get("max_len", 512), agent.cfg.get("head_max_len", 192)
+        max_len = agent.max_len or agent.cfg.get("max_len", 512)
+        head_len = agent.cfg.get("head_max_len", 192)
         state_ids = tok(
             serialize_state(state).replace(tok.mask_token, " "), add_special_tokens=False
         )["input_ids"]

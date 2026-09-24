@@ -3,7 +3,7 @@ import pytest
 pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
-from laya_mlx.serve import _resolve_model, create_app  # noqa: E402
+from laya_mlx.serve import _env_positive_int, _resolve_model, build_router, create_app  # noqa: E402
 
 
 class FakeRouter:
@@ -79,6 +79,20 @@ def test_health(monkeypatch):
     monkeypatch.delenv("LAYA_API_KEY", raising=False)
     response = TestClient(create_app(FakeRouter())).get("/health")
     assert response.json() == {"status": "ok", "loaded": ["english"], "device": "auto"}
+
+
+def test_max_len_is_forwarded_to_router(monkeypatch):
+    monkeypatch.setenv("LAYA_MAX_LEN", "256")
+    monkeypatch.setenv("LAYA_PRELOAD", "0")
+    router = build_router()
+    assert router.max_len == 256
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "not-an-int"])
+def test_max_len_rejects_invalid_environment_values(monkeypatch, value):
+    monkeypatch.setenv("LAYA_MAX_LEN", value)
+    with pytest.raises(ValueError, match="LAYA_MAX_LEN"):
+        _env_positive_int("LAYA_MAX_LEN")
 
 
 @pytest.mark.parametrize(

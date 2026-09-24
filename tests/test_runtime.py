@@ -49,6 +49,18 @@ def test_single_option_and_long_state(tiny_checkpoint):
     assert result["usage"]["input_tokens"] == 128
 
 
+def test_agent_max_len_overrides_checkpoint_context_limit(tiny_checkpoint):
+    agent = Agent(tiny_checkpoint, max_len=64)
+    items, _ = agent.prepare(
+        "hello " * 100,
+        {"one": {"type": "choice", "instructions": "choose", "criteria": ["only"]}},
+    )
+    assert agent.max_len == 64
+    assert len(items[0]["ids"]) <= 64
+    with pytest.raises(ValueError, match="Expected"):
+        Agent(tiny_checkpoint, max_len=32)
+
+
 def test_converted_checkpoint_round_trip_and_no_overwrite(tiny_checkpoint, tmp_path, questions):
     before = Agent(tiny_checkpoint).predict("hello", questions)
     output = convert(tiny_checkpoint, tmp_path / "converted")

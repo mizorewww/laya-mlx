@@ -176,11 +176,17 @@ class Router:
         standalone_repos: bool = False,
         preload: bool = False,
         dtype: str = "float16",
+        max_len: Optional[int] = None,
     ):
         self.models = dict(STANDALONE_MODELS if standalone_repos else DEFAULT_MODELS)
         if models:
             self.models.update({normalise_name(k): v for k, v in models.items()})
         self.dtype = dtype
+        if max_len is not None and (
+            isinstance(max_len, bool) or not isinstance(max_len, int) or max_len < 1
+        ):
+            raise ValueError("max_len must be a positive integer or None")
+        self.max_len = max_len
         self.device = device
         self.token = token or os.environ.get("HF_TOKEN")
         self.max_loaded = max(1, int(max_loaded))
@@ -211,7 +217,12 @@ class Router:
 
             repo, sub = _split(self.models[key])
             agent = Agent(
-                repo, device=self.device, token=self.token, subfolder=sub, dtype=self.dtype
+                repo,
+                device=self.device,
+                token=self.token,
+                subfolder=sub,
+                dtype=self.dtype,
+                max_len=self.max_len,
             )
             self._agents[key] = agent
             self._order.append(key)
