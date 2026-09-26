@@ -14,6 +14,10 @@ Contract notes, and where this differs from `laya-mcp`:
   no forward pass. ``exact`` is false: token counts are estimates, as upstream's
   own are.
 * ``GET /health`` - ok / loaded / degraded / calls / failures.
+* ``POST /route`` - CashCard support routing, not part of the `laya-mcp`
+  contract. Takes ``{"message": "..."}`` and returns the support queue, whether
+  it was confident enough to auto-route, and whether the message is urgent. See
+  ``CASHCARD_QUEUES`` for the queues and ``route_decision`` for the rules.
 
 A ``noul`` is re-expressed as a neutral ``A``/``B`` choice before it reaches the
 model, exactly as ``laya_mcp.protocol.noul_as_choice`` does, because a noul
@@ -24,6 +28,7 @@ This is deliberately small and is not a reimplementation of `laya-mcp`: it has n
 calibration store, no language routing, no strict mode and no MCP transport. It
 exists so the MLX speedup can be measured against the same contract.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -46,6 +51,75 @@ def band_of(probability: float) -> str:
     if probability > BAND_HIGH:
         return "yes"
     return "uncertain"
+
+
+#: CashCard support queues, id -> the option text the model chooses between.
+#: The wording matters: it was tuned against 32 labelled CashCard messages.
+CASHCARD_QUEUES = {
+    "topup": "wallet top-up or UPI payment / balance not updated",
+    "pass": "adding or recovering the pass in Apple Wallet or Google Wallet",
+    "scan": "QR scan or entry failure at the venue",
+    "refund": "refund or cancellation request",
+    "plan": "membership, package or plan details",
+    "sales": "new business wanting to buy CashCard (sales / demo)",
+}
+#: Where a message goes when the model is not confident enough to route it.
+REVIEW_QUEUE = "human_review"
+
+#: Every misrouted test message scored below this; every one above was right.
+ROUTE_MIN_CONFIDENCE = 0.60
+#: Caught 5/7 critical test messages with 1 false alarm in 25.
+URGENT_THRESHOLD = 0.80
+
+ROUTE_QUESTIONS = {
+    "queue": {
+        "type": "choice",
+        "instructions": "Which support queue should handle this customer message?",
+        "criteria": list(CASHCARD_QUEUES.values()),
+    },
+    # Asked as a raw noul with no criteria, regardless of --raw-noul: in testing
+    # both the A/B re-ask and added criteria cut critical messages caught from
+    # 5/7 to 3/7 or fewer.
+    "urgent": {
+        "type": "noul",
+        "instructions": (
+            "Is the customer blocked right now or has money already been deducted wrongly?"
+        ),
+    },
+}
+
+
+def route_decision(
+    answers: dict,
+    min_confidence: float = ROUTE_MIN_CONFIDENCE,
+    urgent_threshold: float = URGENT_THRESHOLD,
+) -> dict:
+    """Turn the model's raw answers to ``ROUTE_QUESTIONS`` into a routing decision.
+
+    Refunds are read from the queue rather than asked separately: a standalone
+    refund question found at most 3/7 refund requests, the queue found all 7.
+    ``refund_requested`` is a tag for staff, never a trigger to pay out.
+    """
+    by_label = {label: qid for qid, label in CASHCARD_QUEUES.items()}
+    queue_answer = answers["queue"]
+    probabilities = {
+        by_label[label]: round(float(p), 4)
+        for label, p in (queue_answer.get("probabilities") or {}).items()
+    }
+    predicted = by_label[queue_answer["choice"]]
+    confidence = probabilities.get(predicted, 0.0)
+    auto_routed = confidence >= min_confidence
+    urgent_p = float(answers["urgent"]["noul"])
+    return {
+        "queue": predicted if auto_routed else REVIEW_QUEUE,
+        "predicted_queue": predicted,
+        "confidence": confidence,
+        "auto_routed": auto_routed,
+        "urgent": urgent_p >= urgent_threshold,
+        "urgent_probability": round(urgent_p, 4),
+        "refund_requested": auto_routed and predicted == "refund",
+        "probabilities": probabilities,
+    }
 
 
 def noul_as_choice(question: dict) -> dict:
@@ -153,6 +227,28 @@ class Engine:
             "device": str(self.agent.device),
         }
 
+    def route(self, payload: dict) -> dict:
+        message = payload.get("message")
+        if not isinstance(message, str) or not message.strip():
+            raise ValueError("`message` must be a non-empty string")
+        with self._lock:
+            t0 = time.time()
+            # Straight to the agent, bypassing _run's noul re-ask; see ROUTE_QUESTIONS.
+            result = self.agent.predict(message, ROUTE_QUESTIONS)
+            self.last_latency_ms = (time.time() - t0) * 1000
+        self.calls += 1
+        decision = route_decision(
+            result["answers"],
+            min_confidence=self.args.route_min_confidence,
+            urgent_threshold=self.args.route_urgent_threshold,
+        )
+        return {
+            "ok": True,
+            **decision,
+            "latency_ms": round(self.last_latency_ms, 1),
+            "model": "laya_mlx",
+        }
+
     def plan(self, payload: dict) -> dict:
         state = payload.get("state")
         questions = payload.get("questions") or {}
@@ -230,7 +326,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         route = self.path.rstrip("/")
-        if route not in ("/ask", "/plan"):
+        handlers = {"/ask": self.engine.ask, "/plan": self.engine.plan, "/route": self.engine.route}
+        if route not in handlers:
             self._send(404, {"ok": False, "error": f"no route for POST {self.path}"})
             return
         length = int(self.headers.get("Content-Length") or 0)
@@ -240,7 +337,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(400, {"ok": False, "error": f"invalid JSON: {exc}"})
             return
         try:
-            result = self.engine.ask(payload) if route == "/ask" else self.engine.plan(payload)
+            result = handlers[route](payload)
             self._send(200, result)
         except Exception as exc:  # noqa: BLE001
             self.engine.failures += 1
@@ -261,8 +358,23 @@ def main() -> int:
     parser.add_argument("--dtype", default="float16", choices=("float16", "float32", "bfloat16"))
     parser.add_argument("--device", default="gpu", choices=("gpu", "metal", "cpu"))
     parser.add_argument("--batch-size", type=int, default=16)
-    parser.add_argument("--raw-noul", action="store_true",
-                        help="send nouls unmodified instead of re-asking them as an A/B choice")
+    parser.add_argument(
+        "--raw-noul",
+        action="store_true",
+        help="send nouls unmodified instead of re-asking them as an A/B choice",
+    )
+    parser.add_argument(
+        "--route-min-confidence",
+        type=float,
+        default=ROUTE_MIN_CONFIDENCE,
+        help="POST /route sends messages below this queue confidence to human_review",
+    )
+    parser.add_argument(
+        "--route-urgent-threshold",
+        type=float,
+        default=URGENT_THRESHOLD,
+        help="POST /route marks a message urgent at or above this probability",
+    )
     parser.add_argument("--log-level", default="info", choices=("debug", "info", "warning"))
     args = parser.parse_args()
 
