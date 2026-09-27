@@ -112,6 +112,12 @@ def test_missing_local_model_fails_without_a_network_attempt(monkeypatch, tmp_pa
     assert attempts == []
 
 
+def test_default_discovery_finds_the_directory_the_download_hint_recommends(monkeypatch, tmp_path):
+    (tmp_path / "models" / "snake").mkdir(parents=True)
+    monkeypatch.chdir(tmp_path)
+    assert local_checkpoint().resolve() == (tmp_path / "models" / "snake").resolve()
+
+
 def test_small_or_odd_boards_are_rejected():
     for shape in ((3, 4), (4, 3), (5, 5)):
         with pytest.raises(ValueError):
