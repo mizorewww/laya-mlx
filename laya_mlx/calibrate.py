@@ -69,15 +69,17 @@ _CONFIG_IDENTITY_SKIP = ("temperature", "temperature_by_options")
 
 
 def _vec(x) -> np.ndarray:
-    if "torch" in sys.modules and isinstance(x, sys.modules["torch"].Tensor):
+    torch_mod = sys.modules.get("torch")
+    if torch_mod is not None and isinstance(x, torch_mod.Tensor):
         x = x.detach().cpu().numpy()
     return np.asarray(x, dtype=np.float32).reshape(-1)
 
 
 def _validated_pair(logits, target, k=None):
+    torch_mod = sys.modules.get("torch")
     vectors = []
     for name, value in (("logits", logits), ("target", target)):
-        if "torch" in sys.modules and isinstance(value, sys.modules["torch"].Tensor):
+        if torch_mod is not None and isinstance(value, torch_mod.Tensor):
             value = value.detach().cpu().numpy()
         try:
             vector = np.asarray(value)
@@ -124,6 +126,19 @@ def _positive_int(name: str, value: int) -> int:
     return int(value)
 
 
+def _numpy_pairs_by_width(pairs: Sequence) -> List[Tuple[np.ndarray, np.ndarray]]:
+    groups: Dict[int, List[Tuple[np.ndarray, np.ndarray]]] = {}
+    for z, t in pairs:
+        groups.setdefault(len(_vec(z)), []).append((_vec(z), _vec(t)))
+    return [
+        (
+            np.stack([z for z, _ in groups[w]]),
+            np.stack([t for _t, t in groups[w]]),
+        )
+        for w in sorted(groups)
+    ]
+
+
 def _pairs_by_width(pairs: Sequence) -> List[Tuple[torch.Tensor, torch.Tensor]]:
     """One (logits, target) matrix per distinct option count, narrowest first.
 
@@ -136,16 +151,37 @@ def _pairs_by_width(pairs: Sequence) -> List[Tuple[torch.Tensor, torch.Tensor]]:
     """
     import torch
 
-    groups: Dict[int, List[Tuple[np.ndarray, np.ndarray]]] = {}
-    for z, t in pairs:
-        groups.setdefault(len(_vec(z)), []).append((_vec(z), _vec(t)))
-    return [
-        (
-            torch.from_numpy(np.stack([z for z, _ in groups[w]])),
-            torch.from_numpy(np.stack([t for _t, t in groups[w]])),
-        )
-        for w in sorted(groups)
-    ]
+    return [(torch.from_numpy(z), torch.from_numpy(t)) for z, t in _numpy_pairs_by_width(pairs)]
+
+
+def _fit_unclamped_temperature_numpy(
+    groups: List[Tuple[np.ndarray, np.ndarray]], n_rows: float, log_lo: float, log_hi: float
+) -> float:
+    log_t = 0.0
+    for _ in range(100):
+        u = float(np.clip(log_t, log_lo, log_hi))
+        scale = np.float32(np.exp(u))
+        grad = 0.0
+        hess = 0.0
+        for z, t in groups:
+            s = z / scale
+            shifted = s - s.max(axis=-1, keepdims=True)
+            exp_s = np.exp(shifted)
+            p = exp_s / exp_s.sum(axis=-1, keepdims=True)
+            g_row = ((t - p) * s).sum(axis=-1)
+            s_mean = (p * s).sum(axis=-1, keepdims=True)
+            var_s = (p * (s - s_mean) ** 2).sum(axis=-1)
+            grad += float(g_row.sum())
+            hess += float((var_s - g_row).sum())
+        grad /= n_rows
+        hess /= n_rows
+        if not np.isfinite(grad) or not np.isfinite(hess):
+            return float("nan")
+        if abs(grad) < 1e-7:
+            break
+        step = grad / max(abs(hess), 1e-4)
+        log_t = float(np.clip(u - np.clip(step, -1.0, 1.0), log_lo, log_hi))
+    return float(np.exp(np.clip(log_t, log_lo, log_hi)))
 
 
 def _fit_unclamped_temperature(pairs: Sequence, min_n: Optional[int] = None) -> float:
@@ -158,8 +194,6 @@ def _fit_unclamped_temperature(pairs: Sequence, min_n: Optional[int] = None) -> 
     band, so a raw value can be far outside it; a NaN from the underflow case described in
     `fit_one_temperature` reaches the caller as a NaN rather than as 1.0.
     """
-    import torch
-
     if min_n is None:
         min_n = MIN_BUCKET_N
     if isinstance(min_n, bool) or not isinstance(min_n, Integral) or min_n < 1:
@@ -174,10 +208,14 @@ def _fit_unclamped_temperature(pairs: Sequence, min_n: Optional[int] = None) -> 
         sel.append((z, t))
     if len(sel) < min_n:
         return 1.0
-    groups = _pairs_by_width(sel)
     n_rows = float(len(sel))
     log_lo = float(np.log(TEMP_MIN)) - LOG_T_MARGIN
     log_hi = float(np.log(TEMP_MAX)) + LOG_T_MARGIN
+    try:
+        import torch
+    except ModuleNotFoundError:
+        return _fit_unclamped_temperature_numpy(_numpy_pairs_by_width(sel), n_rows, log_lo, log_hi)
+    groups = _pairs_by_width(sel)
     with torch.enable_grad():
         log_t = torch.zeros(1, requires_grad=True)
         opt = torch.optim.LBFGS([log_t], lr=0.1, max_iter=100)

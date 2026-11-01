@@ -20,7 +20,7 @@ def spread_pool(width):
     return pairs
 
 
-def test_ragged_temperature_fit_preserves_real_option_counts():
+def test_ragged_temperature_fit_preserves_real_option_counts(monkeypatch):
     # Same seeded fixture as upstream tests/test_calibrate.py: padding must not
     # compete in softmax, and a runaway log(T) must not turn the fit into NaN/1.
     pairs = spread_pool(2) + spread_pool(9)
@@ -28,6 +28,16 @@ def test_ragged_temperature_fit_preserves_real_option_counts():
     report = fit_temperature_map([(0, z, t) for z, t in pairs])
     assert report["temperature"][0] == 0.5
     assert report["temperature_clamped"]["choice"]["bound"] == "min"
+    # Verify the pure-NumPy fallback path produces the same result when torch is absent.
+    import sys
+
+    monkeypatch.setitem(sys.modules, "torch", None)
+    assert fit_one_temperature(pairs, min_n=10) == 0.5
+    rng = np.random.RandomState(42)
+    z = rng.randn(64, 4).astype(np.float32)
+    shifted = z / 1.8 - (z / 1.8).max(axis=-1, keepdims=True)
+    p = np.exp(shifted) / np.exp(shifted).sum(axis=-1, keepdims=True)
+    assert fit_one_temperature(list(zip(z, p)), min_n=10) == pytest.approx(1.8, rel=1e-4)
 
 
 @pytest.mark.parametrize("value", [True, False])
