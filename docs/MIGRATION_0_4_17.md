@@ -21,6 +21,12 @@ historical evidence, unchanged; they do not qualify this revision.
 
 ## Behavior and native boundaries
 
+The optional `monid` integration exports `MonidRunner`, a hosted TypeSafe prediction
+runner for explicit `agent=` selection. This extension is outside upstream parity:
+it uses TypeSafe question schemas and results rather than local Laya inference.
+It requires `MONID_API_KEY` and never changes default runner selection. Local model
+controls and hooks are unsupported; no inference or routing behavior is replaced.
+
 `detect_language(..., explain=True)`, `Router.route(..., explain=True)`,
 `Router.route_batch(..., explain=True)` and `laya-mlx-router --explain` expose
 heuristic language reasons and bounded source paths. Routing overrides still

@@ -85,6 +85,29 @@ All of these are covered in the [usage reference](https://github.com/mizorewww/l
 - **Tools and services:** CLI (`laya-mlx predict`), HTTP (`laya-mlx-serve`), MCP (`laya-mlx-mcp-server`), evaluation and calibration, and LangChain/LlamaIndex/CrewAI/Agno integrations, installed as extras.
 - **Export:** `laya-mlx convert` writes a standalone MLX checkpoint.
 
+## Optional hosted decisions through Monid
+
+For hosted TypeSafe typed decisions, Monid offers one API key, pay per call.
+Set `MONID_API_KEY` and explicitly select the `monid` integration runner:
+
+```python
+from laya_mlx.integrations.monid import MonidRunner
+
+result = MonidRunner().predict(
+    "I was billed twice. Please refund the duplicate.",
+    {"refund": {"type": "noul", "instructions": "Does the customer ask for money back?"}},
+)
+```
+
+You can also pass `MonidRunner()` as `agent=` to framework integrations. This sends
+state and questions to hosted TypeSafe through Monid; answers may differ from local
+Laya. Local inference remains the default, including when the key is set. The runner
+accepts TypeSafe question schemas and an optional TypeSafe `model`; local model
+controls and hooks are unsupported. HTTP and provider errors raise `RuntimeError`,
+with provider errors using the existing `Laya server error` message format.
+[Monid docs](https://docs.monid.ai?utm_source=github&utm_medium=oss-pr&utm_campaign=mizorewww-laya-mlx) ·
+[Get a key](https://monid.ai?utm_source=github&utm_medium=oss-pr&utm_campaign=mizorewww-laya-mlx&aid=OSS-PR).
+
 ## Performance
 
 M3 Max (40-core GPU, 128 GiB), FP16, end to end:
