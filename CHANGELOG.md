@@ -26,8 +26,7 @@ Follows upstream **v0.4.17** (`fe9a6c35`). [Migration record](docs/MIGRATION_0_4
 
 ## 0.5.0 — 2026-10-20
 
-Follows upstream **v0.4.12** (`ffc14201`). [Release notes](docs/RELEASE_0_5_0.md) ·
-[migration](docs/MIGRATION_0_4.md) · [qualification](docs/QUALIFICATION_0_4_12.md).
+Follows upstream **v0.4.12** (`ffc14201`). [Qualification](docs/QUALIFICATION_0_4_12.md).
 
 - Batch and long-text inference, structured decisions, hooks, calibration, evaluation, HTTP/MCP
   serving and LangChain/LlamaIndex/CrewAI/Agno integrations.

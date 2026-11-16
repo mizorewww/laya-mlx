@@ -14,10 +14,8 @@ duplicate ONNX implementation. This is a source migration with checked host
 behavior. Linux host and macOS native CPU CI passed for source commit
 `0e8c0e51f8914908cc99591576ff1deeed205c82`; full-checkpoint GPU qualification was not rerun.
 
-The current machine-readable inventory is [UPSTREAM_PORT.json](UPSTREAM_PORT.json).
-The previous manifest is retained as [UPSTREAM_0412_PORT.json](UPSTREAM_0412_PORT.json).
-The v0.4.12 qualification, progress, API audit and benchmark artifacts remain
-historical evidence, unchanged; they do not qualify this revision.
+The v0.4.12 qualification and benchmark artifacts remain historical evidence; they do
+not qualify this revision.
 
 ## Behavior and native boundaries
 
@@ -149,9 +147,6 @@ artifacts are outside this Python inference migration. No PyTorch, ONNX, TileLan
 or other SDK execution path was copied into the package.
 
 ## Validation evidence
-
-[Machine-readable results, environment and source/artifact hashes](UPSTREAM_0417_VALIDATION.json)
-record this local run.
 
 Local validation used Linux x86_64, CPython 3.13.15 and a project `.venv` created
 with `uv venv .venv`. Dependencies were installed with `uv pip --python

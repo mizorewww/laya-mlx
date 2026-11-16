@@ -89,5 +89,3 @@ Run `python -m benchmarks.qualification` in this repository after creating the d
 `python -m benchmarks.paired_features --directory benchmarks/results/v0412-final-paired` performs the alternating-order repeats.
 
 The earlier `v0412-torch27-matrix`, `v0412-abba-batch-torch27` and `v0412-phase-chain` used PyTorch 2.7 as the performance baseline and are not final qualification evidence. The explicit PyTorch 2.14 golden is identical to the previous pure-FP32 correctness reference. Rejected LRU and earlier cache-policy experiments remain recorded rather than removed.
-
-The [progress record](UPSTREAM_0412_PROGRESS.json) identifies test, installed-wheel, calibration, integration and numerical-validation reports.
