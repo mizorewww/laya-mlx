@@ -18,7 +18,7 @@ import re
 import unicodedata
 from collections import Counter
 from collections.abc import Mapping
-from typing import Dict, List, Optional, Union
+from typing import Dict, Iterator, List, Optional, Union
 
 # Unicode blocks that the English (ModernBERT-large, 50k English BPE) checkpoint cannot read.
 _SCRIPT_RANGES = [
@@ -1105,7 +1105,7 @@ _IDENTIFIER = re.compile(r"(?<![\w-])[\w-]*(?:[.@][\w-]+)+", re.UNICODE)
 
 def _iter_text(
     state: Union[str, bytes, Mapping, list, None], _depth: int = 0, _paths=None, _path=()
-) -> List[str]:
+) -> Iterator[str]:
     """Collect the string leaves of a state, so detection sees real content.
 
     Keys are ignored: they are usually English field names. Any mapping counts, not only
@@ -1113,24 +1113,25 @@ def _iter_text(
     nothing, which made `analyse` report no letters and the router fall through to English.
     """
     if _depth > 6 or state is None:
-        return []
+        return
     if isinstance(state, str):
         if _paths is not None:
             _paths.append(_path)
-        return [state]
+        yield state
+        return
     if isinstance(state, (bytes, bytearray)):
         try:
             text = bytes(state).decode("utf-8")
         except UnicodeDecodeError:
-            return []
+            return
         if _paths is not None:
             _paths.append(_path)
-        return [text]
+        yield text
+        return
     if isinstance(state, Mapping):
-        out = []
         if _paths is None:
             for v in state.values():
-                out.extend(_iter_text(v, _depth + 1))
+                yield from _iter_text(v, _depth + 1)
         else:
             for key, v in state.items():
                 # Do not stringify arbitrary keys or copy an unbounded field name into a report.
@@ -1138,19 +1139,30 @@ def _iter_text(
                     type(key) is int and key.bit_length() <= 63
                 )
                 path = _path + (key,) if _path is not None and bounded else None
-                out.extend(_iter_text(v, _depth + 1, _paths, path))
-        return out
+                yield from _iter_text(v, _depth + 1, _paths, path)
+        return
     if isinstance(state, (list, tuple)):
-        out = []
         for i, v in enumerate(state):
             path = _path + (i,) if _paths is not None and _path is not None else _path
-            out.extend(_iter_text(v, _depth + 1, _paths, path))
-        return out
-    return []
+            yield from _iter_text(v, _depth + 1, _paths, path)
+        return
 
 
 def state_text(state: Union[str, bytes, Mapping, list, None], max_chars: int = 4000) -> str:
     """Flatten a state into the text used for detection (keys are ignored: they are usually English)."""
+    if max_chars <= 0 or state is None:
+        return ""
+    if isinstance(state, str):
+        return state if len(state) <= max_chars else state[:max_chars]
+    if isinstance(state, (bytes, bytearray)):
+        try:
+            text = bytes(state).decode("utf-8")
+        except UnicodeDecodeError:
+            return ""
+        return text if len(text) <= max_chars else text[:max_chars]
+    if not isinstance(state, (Mapping, list, tuple)):
+        return ""
+
     parts: List[str] = []
     budget = max_chars
     for leaf in _iter_text(state):
@@ -1817,9 +1829,10 @@ def analyse(
         # accuracy on `pt`). The cost is lopsided: English sent to multilingual loses a few points,
         # the reverse loses calibration. So a state that would go to English is checked line by line
         # and field by field.
-        leaves = _iter_text(state)
         # a single line has no other part to be outvoted by, and was just read whole
-        if len(leaves) > 1 or any("\n" in leaf for leaf in leaves):
+        it = iter(_iter_text(state))
+        first = next(it, None)
+        if first is not None and ("\n" in first or next(it, None) is not None):
             found = _non_english_segment(state, diagnostic=diagnostic)
             if found:
                 lang, mixed = found

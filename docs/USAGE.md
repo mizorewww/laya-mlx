@@ -284,8 +284,14 @@ a model is loaded.
 | `laya-mlx-evals` | — | Evaluation and reliability calibration |
 | `laya-snake` | `demo` | Terminal Snake demo ([guide](SNAKE_DEMO.md)) |
 
+`POST /v1/route` on the HTTP service returns the routing decision (`model`, `repo`, `reason`)
+without running a model; `"explain": true` adds the language diagnostic. The MCP `laya_route` and
+`laya_route_batch` tools take the same `explain` flag. The service logs one warning per request
+when a state was truncated.
+
 Framework integrations are available as the `langchain`, `langgraph`, `llamaindex`, `crewai` and
-`agno` extras. Upstream's standalone HTTP SDK is a separate package and can target `laya-mlx-serve`.
+`agno` extras. LangChain's `LayaRouter(decision_policy="native")` follows the `route` field of an
+answer (`auto` or `review`) instead of a confidence threshold, for backends that report one. Upstream's standalone HTTP SDK is a separate package and can target `laya-mlx-serve`.
 
 ## Export an MLX checkpoint
 
@@ -303,9 +309,9 @@ weights, so FP32 raises arithmetic precision, not weight precision.
 ## Upstream compatibility
 
 Host behavior (prompts, validation, routing, calibration, evaluation, HTTP/MCP and integrations)
-follows [NandhaKishorM/laya](https://github.com/NandhaKishorM/laya) v0.4.17
-(`fe9a6c35023a7d94102e7feaaeaae8857d9d1b07`). The 345-entry public API audit has no
-unclassified differences ([audit](UPSTREAM_0417_API_AUDIT.json)).
+follows [NandhaKishorM/laya](https://github.com/NandhaKishorM/laya) v0.4.34
+(`80a1da1fa5448ea12163f4d977935625a0aea670`). The 351-entry public API audit has no
+unclassified differences ([audit](UPSTREAM_API_AUDIT.json)).
 
 Native boundaries:
 
@@ -313,7 +319,11 @@ Native boundaries:
 - TileLang `accelerate()` returns `False` (raises with `strict=True`); `deaccelerate()` does not
   disable MLX compilation.
 - CUDA, PyTorch compile controls, ONNX execution and training are not provided.
+- The vegaml engine is not included: `Agent(vegaml=True)` and `load(vegaml=True)` raise. A Router
+  routes images, audio, video, states past `vega_over_tokens` and questions with fitted heads to a
+  vega lane only when given a built agent, for example
+  `Router(vega=laya.Agent(vegaml=True))` with official laya installed. Otherwise the lane is off.
 - Core ML's `compute_units` is not a Router option here.
 
 Deliberate divergences from upstream are listed with their tests in
-[MIGRATION_0_4_17.md](MIGRATION_0_4_17.md), together with the complete file inventory.
+[UPSTREAM.md](UPSTREAM.md), together with everything that is not included and the file inventory.

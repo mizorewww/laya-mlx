@@ -23,7 +23,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Sequence, Tuple, Union
 
-from ..confidence import _gate_confidence, check_min_confidence
+from ..confidence import _gate_confidence, check_min_confidence, resolve_min_confidence
 
 # Shared per-call control rules across integrations
 from ._controls import budget_kwargs as _budget_kwargs
@@ -441,6 +441,11 @@ class LayaToolSelector:
             if self.confidence_threshold is not None
             else self.min_confidence
         )
+        # `min_confidence` may be a per-bucket map (#394), which `check_min_confidence` accepts in
+        # `__init__`. Compare against the threshold this answer's bucket is gated at, the way
+        # `flag_low_confidence` does, rather than against the dict itself.
+        if isinstance(threshold, dict):
+            threshold = resolve_min_confidence(answer, threshold)
         is_low_confidence = (
             bool(answer.get("low_confidence"))
             or conf is None

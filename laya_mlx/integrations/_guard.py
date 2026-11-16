@@ -36,18 +36,26 @@ def score_violation_probability(answer: Dict[str, Any], levels: int = 0) -> floa
                 usable = False
                 break
             try:
-                total += float(value)
-            except (TypeError, ValueError):
+                probability = float(value)
+            except (TypeError, ValueError, OverflowError):
                 usable = False
                 break
-        if usable:
+            if not math.isfinite(probability):
+                usable = False
+                break
+            total += probability
+        if usable and math.isfinite(total):
             return total
     # No usable distribution: stand in with the normalised expected level. `score` rides the same
     # arbitrary-answer path, so a non-number or a bool cannot be divided -- read it as 0.0 instead.
     score = answer.get("score", 0.0)
     if isinstance(score, bool) or not isinstance(score, (int, float)):
         return 0.0
-    return score / (k - 1)
+    try:
+        normalized = score / (k - 1)
+    except OverflowError:
+        return 0.0
+    return normalized if math.isfinite(normalized) else 0.0
 
 
 #: The error every wrapper raises for a decision body it cannot read. Kept in one place so the
@@ -97,9 +105,17 @@ def answer_number(
     a `bool` is refused too rather than read as 1.0/0.0 (`bool` subclasses `int`), because a
     spurious `true` would otherwise become a full-probability violation; and a non-finite value is
     refused because every comparison against NaN silently answers False, i.e. "safe".
+    A Python `int` may also be wider than a `float`, so `math.isfinite` raises `OverflowError` and
+    the field is refused as non-finite.
     """
     value = answer.get(field, default)
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+    try:
+        finite = (
+            not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
+        )
+    except OverflowError:
+        finite = False
+    if not finite:
         raise RuntimeError(
             "%s from %s: %r must be a finite number, got %r"
             % (MALFORMED_PREFIX, where, field, value)

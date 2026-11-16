@@ -6,7 +6,7 @@ output_tokens}`` usage block -- so a client written against Jev (for example the
 `hs-jev` Haskell client) can point its ``baseUrl`` at this server and keep
 working unchanged. All this module adds is the HTTP surface Laya itself does not
 ship: a ``POST /v1/systemone`` route and its ``POST /v1/systemone/batch`` sibling,
-an optional bearer check, and a health probe.
+``POST /v1/route`` for routing without inference, an optional bearer check, and a health probe.
 
 Each ``choice`` and ``score`` answer also carries ``x_jev_confidence``: the
 ``confidence`` Jev's own formula gives for the same probabilities. Laya's
@@ -177,6 +177,11 @@ DEFAULT_MAX_TOKEN_BUDGET = 8192
 # language it reads, how many tokens it gets and where it abstains are all plain data.
 BODY_CONTROLS = ("model", "max_len", "head_max_len", "task", "lang", "lang_guess", "min_confidence")
 BODY_REFUSALS = ("hooks", "on_predict_start", "on_predict_end", "hooks_raise", "hooks_timeout")
+# `image`, `audio` and `video` are `Router.predict` arguments since 0.4.25 and route to the vega
+# lane; the HTTP body has no media encoding yet, so they are refused here rather than accepted as
+# strings and passed on, and the response says where media goes (laya.Agent(vegaml=True) locally).
+# A tuple of their own, because ``BODY_REFUSALS`` is pinned as the hook set LangChain refuses too.
+MEDIA_REFUSALS = ("image", "audio", "video")
 
 # ``Router.predict_batch`` reads two different kinds of control: call-level keyword arguments that
 # apply to the whole batch (chunking, padding, the abstention threshold) and per-request keys that
@@ -199,6 +204,28 @@ BATCH_BODY_ITEM_CONTROLS = ("max_len", "head_max_len", "task", "lang", "lang_gue
 # the endpoint cannot honour is told, not ignored. It is listed separately from ``BODY_REFUSALS``
 # because that tuple is pinned against ``Router.predict``, which has no ``diagnostics``.
 BATCH_BODY_OUT_PARAMETERS = ("diagnostics",)
+
+# Route-only requests cannot apply prediction budgets, abstention or batch controls.
+# Hook policy belongs to the operator, including the on_route callback itself.
+ROUTE_BODY_CONTROLS = ("model", "task", "lang", "lang_guess", "explain")
+ROUTE_BODY_REFUSALS = (
+    BODY_REFUSALS
+    + MEDIA_REFUSALS
+    + (
+        "on_route",
+        "max_len",
+        "head_max_len",
+        "min_confidence",
+        "batch_size",
+        "sort_by_length",
+        "diagnostics",
+        "states",
+        # `Router.route` takes these two since 0.4.25: `media` names a non-text input and
+        # `allow_vega` is how `predict_batch` keeps a batch on the encoders; neither is a body control
+        "media",
+        "allow_vega",
+    )
+)
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -284,6 +311,111 @@ def _add_jev_confidence(result: Dict[str, Any]) -> Dict[str, Any]:
         conf = jev_confidence(answer) if isinstance(answer, dict) else None
         answers[qid] = answer if conf is None else {**answer, "x_jev_confidence": round(conf, 4)}
     return {**result, "answers": answers}
+
+
+def _log_field(value: Any) -> str:
+    """Caller-influenced text folded onto one log line.
+
+    Question ids are request keys, and `truncated_questions` copies them. A newline in
+    one would split the warning into a second record -- the same log injection the
+    inference-failure line already closes for `model`.
+    """
+    return str(value).replace("\n", "\\n").replace("\r", "\\r")
+
+
+def _question_count(questions: Any) -> int:
+    return len(questions) if isinstance(questions, dict) else 0
+
+
+def _state_truncation(result: Any) -> Optional[Dict[str, Any]]:
+    """Dropped-token signal on one result, or None when usage does not report a cut.
+
+    `truncated` is a bool on a normal predict and a window count on `predict_long`, so the
+    check is `> 0` and not `is True` (a count of 2 is a cut; `False` is not). Bool is an
+    int in Python, and a fake that puts `True` in `state_tokens_dropped` must not be read
+    as one dropped token. A missing `usage`, a non-dict, or a value that is not a flag or
+    a count is "no report": the fakes this server's tests inject, and any router that
+    predates the truncation fields, succeed without them, and a bad report must not turn
+    that success into a 500 (#1425).
+    """
+    if not isinstance(result, dict):
+        return None
+    usage = result.get("usage")
+    if not isinstance(usage, dict):
+        return None
+    dropped = usage.get("state_tokens_dropped")
+    count = (
+        dropped if isinstance(dropped, int) and not isinstance(dropped, bool) and dropped > 0 else 0
+    )
+    flag = usage.get("truncated")
+    cut = flag is True or (isinstance(flag, int) and not isinstance(flag, bool) and flag > 0)
+    if not cut and count == 0:
+        return None
+    raw_ids = usage.get("truncated_questions")
+    ids = (
+        [_log_field(qid) for qid in raw_ids if isinstance(qid, str) and qid]
+        if isinstance(raw_ids, list)
+        else []
+    )
+    return {"state_tokens_dropped": count, "truncated_questions": ids}
+
+
+def _warn_state_truncated(result: Any, *, route: str, model: Any, questions: Any) -> None:
+    """Warn once when one decision result dropped state tokens (#1425).
+
+    Call before `_project_jev_strict`: that projection removes `truncated` and
+    `state_tokens_dropped`, and the log is then the only operator signal. The line
+    carries the route, the resolved model, how many questions shared the state, and
+    the dropped-token count -- not the state text.
+    """
+    report = _state_truncation(result)
+    if report is None:
+        return
+    _log.warning(
+        "state truncated on %s model=%s questions=%d state_tokens_dropped=%d truncated_questions=%s",
+        route,
+        _log_field(model),
+        _question_count(questions),
+        report["state_tokens_dropped"],
+        report["truncated_questions"],
+    )
+
+
+def _warn_batch_state_truncated(results: Any, *, model: Any, questions: Any) -> None:
+    """Warn once for a batch, aggregating every item whose state was cut (#1425).
+
+    One line for the request, not one per answer and not one per truncated item: the
+    indexes and the per-item dropped counts are the context an operator needs to find
+    the records that never reached the model. Same ordering rule as
+    `_warn_state_truncated`: read `usage` before strict projection strips it.
+    """
+    if not isinstance(results, list):
+        return
+    hits = []
+    for index, item in enumerate(results):
+        report = _state_truncation(item)
+        if report is not None:
+            hits.append((index, report))
+    if not hits:
+        return
+    question_ids = []
+    seen = set()
+    for _, report in hits:
+        for qid in report["truncated_questions"]:
+            if qid not in seen:
+                seen.add(qid)
+                question_ids.append(qid)
+    _log.warning(
+        "state truncated on /v1/systemone/batch model=%s questions=%d results=%d/%d "
+        "indices=%s state_tokens_dropped=%s truncated_questions=%s",
+        _log_field(model),
+        _question_count(questions),
+        len(hits),
+        len(results),
+        [index for index, _ in hits],
+        [report["state_tokens_dropped"] for _, report in hits],
+        question_ids,
+    )
 
 
 def _tournament_plan(questions: Any, group: int) -> Optional[Dict[str, List[str]]]:
@@ -604,6 +736,14 @@ def _refuse_body_refusals(body: Dict[str, Any]) -> None:
     from fastapi import HTTPException
 
     given = sorted(key for key in BODY_REFUSALS if key in body and body[key] is not None)
+    media = sorted(key for key in MEDIA_REFUSALS if key in body and body[key] is not None)
+    if media:
+        raise HTTPException(
+            status_code=422,
+            detail="%s cannot be sent to this endpoint, which takes text states only; images, "
+            "recordings and clips go through laya.Agent(vegaml=True) or a Router with the "
+            "vega lane, in the process that holds the model" % ", ".join(media),
+        )
     if given:
         raise HTTPException(
             status_code=422,
@@ -772,6 +912,19 @@ def _extra_models_option() -> Dict[str, Any]:
     out = {}
     for name, source in data.items():
         if isinstance(source, list):
+            # `[]`, a third element and a number are all lists, so they reached the Router and became
+            # `ValueError: not enough values to unpack` on the first request that routed to them (or a
+            # repo id like `acme/5`), long after the operator was told the value parsed. This option
+            # is the one place that still knows the name and can refuse the startup.
+            if (
+                not 1 <= len(source) <= 2
+                or not all(part is None or isinstance(part, str) for part in source)
+                or not any(isinstance(part, str) for part in source)
+            ):
+                raise SystemExit(
+                    "invalid LAYA_EXTRA_MODELS: source for %r must be a repo "
+                    "id, a local path, or a [repo, subfolder] pair; got %r" % (name, source)
+                )
             out[name] = tuple(source)  # JSON has no tuple: [repo, subfolder]
         elif isinstance(source, str):
             out[name] = source
@@ -1462,6 +1615,94 @@ def create_app(router: Optional[Any] = None):
         finally:
             admission.release()
 
+    @app.post("/v1/route")
+    async def route(request: Request, authorization: Optional[str] = Header(default=None)):
+        nonlocal gate
+        _check_auth(authorization)
+        async with _admit():
+            body = await _read_json_body(request, body_read_timeout)
+            if not isinstance(body, dict) or "questions" not in body:
+                raise HTTPException(
+                    status_code=400,
+                    detail="request body must be an object with a 'questions' field",
+                )
+            state, questions = body.get("state"), body["questions"]
+            _check_request_limits(
+                state,
+                questions,
+                MAX_TOURNAMENT_CHOICE_OPTIONS if tournament_group else MAX_CHOICE_OPTIONS,
+            )
+            if _has_lone_surrogate(body):
+                raise HTTPException(status_code=400, detail=_LONE_SURROGATE_DETAIL)
+            refused = sorted(key for key in ROUTE_BODY_REFUSALS if key in body)
+            if refused:
+                raise HTTPException(
+                    status_code=422,
+                    detail="%s cannot be sent to the routing endpoint" % ", ".join(refused),
+                )
+            explain = body.get("explain", False)
+            if not isinstance(explain, bool):
+                raise HTTPException(status_code=422, detail="explain must be a boolean")
+            model = _resolve_model(body.get("model"), getattr(router, "resolve", None))
+            route_kwargs = {}
+            if body.get("task") is not None:
+                route_kwargs["task"] = body["task"]
+            for key in ("lang", "lang_guess"):
+                value = _validate_language_param(body, key)
+                if value is not None:
+                    route_kwargs[key] = value
+
+            def run_route():
+                if explain:
+                    try:
+                        decision = router.route(
+                            state, questions, model=model, explain=True, **route_kwargs
+                        )
+                    except TypeError as error:
+                        # A legacy injected router may lack the keyword. Do not retry (hooks
+                        # may have side effects), or mislabel an error raised inside route.
+                        if (
+                            error.__traceback__.tb_next is None
+                            and "unexpected keyword argument 'explain'" in str(error)
+                        ):
+                            raise HTTPException(
+                                status_code=422, detail="this router does not support explain=True"
+                            ) from None
+                        raise
+                else:
+                    decision = router.route(state, questions, model=model, **route_kwargs)
+                # Read the final on_route result, without rerunning language detection or
+                # exporting detection.mixed_segment (which can contain verbatim input).
+                result = {key: decision[key] for key in ("model", "repo", "reason")}
+                if explain:
+                    detection = decision.get("detection")
+                    result["diagnostic"] = (
+                        detection.get("diagnostic") if isinstance(detection, dict) else None
+                    )
+                return result
+
+            if gate is None:
+                gate = asyncio.Lock()
+            try:
+                async with gate:
+                    loop = asyncio.get_running_loop()
+                    # Share the inference worker, but not _run_inference: diagnostics must
+                    # not refresh the idle deadline, even on failure or HTTP cancellation.
+                    result = await loop.run_in_executor(pool, run_route)
+                    from fastapi.responses import JSONResponse
+
+                    return JSONResponse(content=result)
+            except HTTPException:
+                raise
+            except ValueError as error:
+                raise HTTPException(status_code=422, detail=str(error)) from None
+            except Exception:  # noqa: BLE001 -- never expose internal paths or hook errors
+                _log.exception(
+                    "routing failed for model=%s",
+                    str(model).replace("\n", "\\n").replace("\r", "\\r"),
+                )
+                raise HTTPException(status_code=500, detail="routing failed")
+
     @app.post("/v1/systemone")
     async def systemone(request: Request, authorization: Optional[str] = Header(default=None)):
         _check_auth(authorization)
@@ -1542,6 +1783,11 @@ def create_app(router: Optional[Any] = None):
                     run = partial(router.predict, state, questions, model=model, **predict_kwargs)
                 result = await loop.run_in_executor(pool, _run_inference, run)
                 infer_ms = (time.perf_counter() - t0) * 1000.0
+                # Log while `usage` still carries the truncation report. `_project_jev_strict`
+                # drops it, and a strict client then has no other signal (#1425).
+                _warn_state_truncated(
+                    result, route="/v1/systemone", model=model, questions=questions
+                )
                 if _env_bool("LAYA_JEV_STRICT", False):
                     result = _project_jev_strict(result)
                 else:
@@ -1718,6 +1964,13 @@ def create_app(router: Optional[Any] = None):
                 t0 = time.perf_counter()
                 batch_res = await loop.run_in_executor(pool, _run_inference, _do_batch)
                 infer_ms = (time.perf_counter() - t0) * 1000.0
+                # Same ordering as `/v1/systemone`: one aggregate warning, read off the
+                # items before strict projection removes their truncation fields (#1425).
+                _warn_batch_state_truncated(
+                    batch_res.get("results") if isinstance(batch_res, dict) else None,
+                    model=model,
+                    questions=questions,
+                )
                 if _env_bool("LAYA_JEV_STRICT", False):
                     batch_res["results"] = [
                         _project_jev_strict(item) for item in batch_res["results"]

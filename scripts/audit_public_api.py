@@ -11,7 +11,7 @@ import json
 import subprocess
 from pathlib import Path
 
-PIN = "fe9a6c35023a7d94102e7feaaeaae8857d9d1b07"
+PIN = "80a1da1fa5448ea12163f4d977935625a0aea670"
 BACKEND_MODULES = {
     "train.py",
     "train_cli.py",
@@ -19,7 +19,12 @@ BACKEND_MODULES = {
     "_compile.py",
     "onnx_agent.py",
     "tl_kernels.py",
+    # vegaml's engine, its media readers and the signed policies it loads
+    "vega.py",
+    "video.py",
+    "policy.py",
 }
+BACKEND_EXPORTS = {"VegaAgent"}
 BACKEND_CALLABLES = {
     "uses_parallel_layout",
     "parallel_option_masks",
@@ -121,7 +126,7 @@ def main():
                 {
                     "module": str(relative),
                     "status": "backend_specific_module",
-                    "reason": "PyTorch training, execution backend, compiler or ONNX implementation; native runtime retained",
+                    "reason": "PyTorch training, execution backend, compiler, ONNX or vegaml implementation; native runtime retained",
                 }
             )
             continue
@@ -168,7 +173,9 @@ def main():
                 failures.append(f"changed signature: {relative}:{name}")
                 row["status"] = "changed"
             results.append(row)
-    missing_exports = sorted(exports(source / "__init__.py") - exports(native / "__init__.py"))
+    missing_exports = sorted(
+        exports(source / "__init__.py") - exports(native / "__init__.py") - BACKEND_EXPORTS
+    )
     if missing_exports:
         failures.append("missing root exports: " + str(missing_exports))
     report = {
@@ -177,10 +184,11 @@ def main():
         "scope": "public functions, explicitly defined public class methods, inherited Agent host methods and root __all__; annotations use native tensor types where needed",
         "rows": results,
         "missing_root_exports": missing_exports,
+        "backend_specific_root_exports": sorted(BACKEND_EXPORTS),
         "failures": failures,
         "passed": not failures,
     }
-    (root / "docs/UPSTREAM_0417_API_AUDIT.json").write_text(json.dumps(report, indent=2) + "\n")
+    (root / "docs/UPSTREAM_API_AUDIT.json").write_text(json.dumps(report, indent=2) + "\n")
     print(args.package, len(results), "surface entries;", len(failures), "unclassified differences")
     for failure in failures:
         print(failure)

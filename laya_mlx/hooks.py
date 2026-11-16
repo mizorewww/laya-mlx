@@ -795,6 +795,20 @@ def _has_semantic_description(val: Any) -> bool:
     return True
 
 
+def _rendered_options(criteria: Any) -> Any:
+    """Order-sensitive identity of the options a choice question renders.
+
+    A dict is compared by its (key, description) sequence because option order is what a
+    reorder probe changes; a sequence is compared as given. Two questions with the same
+    identity are the same probe -- scoring both would only re-weight one rendering (#1493).
+    """
+    if isinstance(criteria, dict):
+        return tuple(criteria.items())
+    if isinstance(criteria, (list, tuple)):
+        return tuple(criteria)
+    return criteria
+
+
 class OptionStabilityHook(BaseHook):
     """Opt-in reliability signal via metamorphic option reordering and renaming (#635).
 
@@ -1060,17 +1074,28 @@ class OptionStabilityHook(BaseHook):
             )
 
             q_variants = [("original", qid, {k: k for k in labels}, False)]
-            probes_ran = []
-            if any(not rel and name != "original" for name, _, rel in variants[1:]):
-                probes_ran.append("reorder")
-            if any(rel for _, _, rel in variants[1:]):
-                probes_ran.append("rename")
+            rendered = [_rendered_options(q.get("criteria"))]
 
             for i, (name, order, rel) in enumerate(variants[1:], 1):
                 vq, back = self._variant_question(q, order, rel)
+                # A rename probe can render exactly the question the model already saw:
+                # when the option keys are already A, B, ... the relabelling maps every
+                # label onto itself. Scoring it again duplicates the original's weight in
+                # `soft_stability` (#1493), so drop it the way make_variants drops
+                # duplicate (order, relabel) candidates.
+                options = _rendered_options(vq.get("criteria"))
+                if options in rendered:
+                    continue
+                rendered.append(options)
                 key = f"{qid}{_SEP}{i}"
                 new_questions[key] = vq
                 q_variants.append((name, key, back, rel))
+
+            probes_ran = []
+            if any(not rel for _, _, _, rel in q_variants[1:]):
+                probes_ran.append("reorder")
+            if any(rel for _, _, _, rel in q_variants[1:]):
+                probes_ran.append("rename")
 
             plan[qid] = {
                 "layout": layout,

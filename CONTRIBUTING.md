@@ -3,8 +3,7 @@
 This project follows upstream [Laya](https://github.com/NandhaKishorM/laya) behavior through a
 native MLX implementation. Upstream-compatible fixes take priority over new model variants,
 service APIs and demos. If a change has to differ from upstream, say why in the pull request,
-add a regression test, and record the divergence in the current migration document
-([MIGRATION_0_4_17.md](docs/MIGRATION_0_4_17.md)).
+add a regression test, and record the divergence in [docs/UPSTREAM.md](docs/UPSTREAM.md).
 
 ## Development setup
 
@@ -16,7 +15,7 @@ source .venv/bin/activate
 
 # Upstream reference used by parity and contract tests (the commit CI pins):
 gh repo clone NandhaKishorM/laya .upstream
-git -C .upstream checkout fe9a6c35023a7d94102e7feaaeaae8857d9d1b07
+git -C .upstream checkout 80a1da1fa5448ea12163f4d977935625a0aea670
 ```
 
 Model weights are downloaded separately and are never committed.
@@ -32,12 +31,13 @@ python scripts/audit_public_api.py --package laya_mlx                    # must 
 
 Unit tests use small random models, including direct comparisons with Transformers and the pinned
 upstream decision head. Upstream's timing-sensitive host contracts run in their own process, before
-the native tests; keep every upstream assertion and timeout unchanged. [CI_TIMING.md](docs/CI_TIMING.md)
-explains the known idle-window timing instability.
+the native tests; keep every upstream assertion and timeout unchanged.
+[UPSTREAM.md](docs/UPSTREAM.md#idle-window-timing) explains the known idle-window timing
+instability.
 
 On Linux, install `.[dev,serve,mcp,structured]` and run
-`pytest -q tests/test_official_host.py tests/test_upstream_0417.py`. These use real host code with
-stub inference and say nothing about MLX numerical parity.
+`pytest -q tests/test_official_host.py tests/test_upstream_0417.py tests/test_upstream_0434.py`.
+These use real host code with stub inference and say nothing about MLX numerical parity.
 
 GitHub Actions runs the host checks on Linux and small-model CPU tests on macOS arm64. Full-checkpoint
 GPU validation and benchmarks run locally only.

@@ -75,6 +75,29 @@ def _vec(x) -> np.ndarray:
 
 
 def _validated_pair(logits, target, k=None):
+    if (
+        isinstance(logits, np.ndarray)
+        and logits.dtype == np.float32
+        and logits.ndim == 1
+        and isinstance(target, np.ndarray)
+        and target.dtype == np.float32
+        and target.ndim == 1
+    ):
+        if not np.isfinite(logits).all():
+            raise ValueError("logits must contain only finite values")
+        if not np.isfinite(target).all():
+            raise ValueError("target must contain only finite values")
+        if len(logits) != len(target):
+            raise ValueError("logits and target must have the same length")
+        if k is None:
+            k = len(logits)
+        elif isinstance(k, bool) or not isinstance(k, Integral) or k < 1 or k > len(logits):
+            raise ValueError("k must be an integer between 1 and the vector length")
+        logits, target = logits[:k], target[:k]
+        if (target < 0).any() or abs(float(target.sum()) - 1.0) > 1.1e-5:
+            raise ValueError("target must be a nonnegative probability vector summing to 1")
+        return logits, target, int(k)
+
     vectors = []
     for name, value in (("logits", logits), ("target", target)):
         if "torch" in sys.modules and isinstance(value, sys.modules["torch"].Tensor):
@@ -83,8 +106,9 @@ def _validated_pair(logits, target, k=None):
             vector = np.asarray(value)
             if vector.ndim != 1 or vector.dtype.kind not in "iuf":
                 raise ValueError("%s must be a one-dimensional numeric vector" % name)
-            with np.errstate(over="ignore", invalid="ignore"):
-                vector = vector.astype(np.float32)
+            if vector.dtype != np.float32:
+                with np.errstate(over="ignore", invalid="ignore"):
+                    vector = vector.astype(np.float32)
         except (TypeError, ValueError, OverflowError) as exc:
             raise ValueError("%s must be a one-dimensional numeric vector" % name) from exc
         if not np.isfinite(vector).all():
@@ -98,7 +122,7 @@ def _validated_pair(logits, target, k=None):
     if isinstance(k, bool) or not isinstance(k, Integral) or k < 1 or k > len(logits):
         raise ValueError("k must be an integer between 1 and the vector length")
     logits, target = logits[:k], target[:k]
-    if (target < 0).any() or not np.isclose(target.sum(), 1.0, rtol=1e-5, atol=1e-6):
+    if (target < 0).any() or abs(float(target.sum()) - 1.0) > 1.1e-5:
         raise ValueError("target must be a nonnegative probability vector summing to 1")
     return logits, target, int(k)
 
@@ -124,7 +148,9 @@ def _positive_int(name: str, value: int) -> int:
     return int(value)
 
 
-def _pairs_by_width(pairs: Sequence) -> List[Tuple[torch.Tensor, torch.Tensor]]:
+def _pairs_by_width(
+    pairs: Sequence, *, _already_validated: bool = False
+) -> List[Tuple[torch.Tensor, torch.Tensor]]:
     """One (logits, target) matrix per distinct option count, narrowest first.
 
     A ragged pool -- a question type holding 2-option and 12-option decisions -- cannot be
@@ -137,18 +163,25 @@ def _pairs_by_width(pairs: Sequence) -> List[Tuple[torch.Tensor, torch.Tensor]]:
     import torch
 
     groups: Dict[int, List[Tuple[np.ndarray, np.ndarray]]] = {}
-    for z, t in pairs:
-        groups.setdefault(len(_vec(z)), []).append((_vec(z), _vec(t)))
+    if _already_validated:
+        for z, t in pairs:
+            groups.setdefault(len(z), []).append((z, t))
+    else:
+        for z, t in pairs:
+            zv, tv = _vec(z), _vec(t)
+            groups.setdefault(len(zv), []).append((zv, tv))
     return [
         (
             torch.from_numpy(np.stack([z for z, _ in groups[w]])),
-            torch.from_numpy(np.stack([t for _t, t in groups[w]])),
+            torch.from_numpy(np.stack([t for _, t in groups[w]])),
         )
         for w in sorted(groups)
     ]
 
 
-def _fit_unclamped_temperature(pairs: Sequence, min_n: Optional[int] = None) -> float:
+def _fit_unclamped_temperature(
+    pairs: Sequence, min_n: Optional[int] = None, *, _already_validated: bool = False
+) -> float:
     """The optimised scale before `clamp_temperature`, for callers that report the clamp.
 
     `fit_one_temperature` is this value clamped, and that is the value anything installs.
@@ -164,17 +197,22 @@ def _fit_unclamped_temperature(pairs: Sequence, min_n: Optional[int] = None) -> 
         min_n = MIN_BUCKET_N
     if isinstance(min_n, bool) or not isinstance(min_n, Integral) or min_n < 1:
         raise ValueError("min_n must be a positive integer")
-    sel = []
-    for pair in pairs:
-        try:
-            z, t = pair
-        except (TypeError, ValueError) as exc:
-            raise ValueError("pair must be (logits, target)") from exc
-        z, t, _k = _validated_pair(z, t)
-        sel.append((z, t))
-    if len(sel) < min_n:
-        return 1.0
-    groups = _pairs_by_width(sel)
+    if _already_validated:
+        if len(pairs) < min_n:
+            return 1.0
+        sel = pairs
+    else:
+        sel = []
+        for pair in pairs:
+            try:
+                z, t = pair
+            except (TypeError, ValueError) as exc:
+                raise ValueError("pair must be (logits, target)") from exc
+            z, t, _k = _validated_pair(z, t)
+            sel.append((z, t))
+        if len(sel) < min_n:
+            return 1.0
+    groups = _pairs_by_width(sel, _already_validated=_already_validated)
     n_rows = float(len(sel))
     log_lo = float(np.log(TEMP_MIN)) - LOG_T_MARGIN
     log_hi = float(np.log(TEMP_MAX)) + LOG_T_MARGIN
@@ -249,7 +287,7 @@ def _ece_report(recs, temperature, temperature_by_options) -> Dict[str, Any]:
         conf_b.append(float(p0.max()))
         cor_b.append(float(int(p0.argmax()) == y))
         t_scale = temperature_by_options.get(temp_bucket(qt, k), temperature[qt])
-        p1 = _softmax(z[:k], t_scale)
+        p1 = p0 if t_scale == 1.0 else _softmax(z[:k], t_scale)
         conf_a.append(float(p1.max()))
         cor_a.append(float(int(p1.argmax()) == y))
     return {
@@ -296,10 +334,9 @@ def _ece_split(recs, seed):
             excluded.append(key)
             continue
         perm = rng.permutation(n)
-        for j in perm[:n_eval]:
-            eval_idx.append(idxs[int(j)])
-        for j in perm[n_eval:]:
-            fit_idx.append(idxs[int(j)])
+        idxs_arr = np.asarray(idxs, dtype=np.int64)
+        eval_idx.extend(idxs_arr[perm[:n_eval]].tolist())
+        fit_idx.extend(idxs_arr[perm[n_eval:]].tolist())
 
     fit_idx.sort()
     eval_idx.sort()
@@ -319,14 +356,16 @@ def _clamp_entry(raw: float, applied: float) -> Optional[Dict[str, Any]]:
     return {"fitted": raw, "applied": applied, "bound": "min" if raw < TEMP_MIN else "max"}
 
 
-def _fit_groups(by_type, by_bucket):
+def _fit_groups(by_type, by_bucket, *, _already_validated: bool = False):
     temperature = [1.0] * N_QTYPES
     clamped: Dict[str, Dict[str, Any]] = {}
     for qt in range(N_QTYPES):
         pairs = by_type[qt]
         # MIN_TYPE_N, not MIN_BUCKET_N: the scalar has to exist when every bucket is small.
         if len(pairs) >= MIN_TYPE_N:
-            raw = _fit_unclamped_temperature(pairs, min_n=MIN_TYPE_N)
+            raw = _fit_unclamped_temperature(
+                pairs, min_n=MIN_TYPE_N, _already_validated=_already_validated
+            )
             temperature[qt] = clamp_temperature(raw, TEMP_MIN, TEMP_MAX)
             entry = _clamp_entry(raw, temperature[qt])
             if entry is not None:
@@ -336,7 +375,7 @@ def _fit_groups(by_type, by_bucket):
     for key, pairs in by_bucket.items():
         if len(pairs) < MIN_BUCKET_N:
             continue
-        raw = _fit_unclamped_temperature(pairs)
+        raw = _fit_unclamped_temperature(pairs, _already_validated=_already_validated)
         temperature_by_options[key] = clamp_temperature(raw, TEMP_MIN, TEMP_MAX)
         entry = _clamp_entry(raw, temperature_by_options[key])
         if entry is not None:
@@ -396,7 +435,9 @@ def fit_temperature_map(
         excluded = []
         by_type, by_bucket = all_by_type, all_buckets
 
-    temperature, temperature_by_options, clamped = _fit_groups(by_type, by_bucket)
+    temperature, temperature_by_options, clamped = _fit_groups(
+        by_type, by_bucket, _already_validated=True
+    )
     out: Dict[str, Any] = {
         "temperature": temperature,
         "temperature_by_options": temperature_by_options,
@@ -437,25 +478,33 @@ def _select_abstention_threshold(
     pseudo-error so a bucket does not clear the gate on a lucky short run. Returns 1.0 when no cut
     holds the risk -- the bucket is too unreliable to accept anything short of a reported certainty.
     """
-    ordered = sorted(pairs, key=lambda cc: cc[0], reverse=True)
-    levels = sorted({c for c, _ in ordered}, reverse=True)
-    n = len(ordered)
-    n_acc = n_err = idx = 0
-    best = None
+    if not pairs:
+        return 1.0
+    arr = np.asarray(pairs, dtype=np.float64)
+    # Sort descending by confidence, using stable sort to preserve identical tie ordering
+    order = np.argsort(-arr[:, 0], kind="stable")
+    confs = arr[order, 0]
+    corrects = arr[order, 1]
+
     # Evaluate the error over the WHOLE accepted set {conf >= tau} at each distinct level, not
     # incrementally within a tie: a threshold accepts every answer at its own confidence, so a tie
     # group's errors must all be counted before the level is judged (else the cut sinks into a bad
     # cohort on its first few correct members).
-    for tau in levels:
-        while idx < n and ordered[idx][0] >= tau:
-            n_acc += 1
-            n_err += 0 if ordered[idx][1] else 1
-            idx += 1
-        rate = (n_err + 1.0) / (n_acc + 1.0) if conservative else (n_err / n_acc)
-        if n_acc > 0 and rate <= target_error:
-            best = tau
-    if best is None:
+    diff = np.diff(confs)
+    group_ends = np.concatenate([np.where(diff != 0.0)[0], [len(confs) - 1]])
+
+    cum_acc = group_ends + 1.0
+    cum_err = np.cumsum(corrects == 0)[group_ends]
+
+    if conservative:
+        rates = (cum_err + 1.0) / (cum_acc + 1.0)
+    else:
+        rates = cum_err / cum_acc
+
+    ok = (cum_acc > 0) & (rates <= target_error)
+    if not np.any(ok):
         return 1.0
+    best = confs[group_ends[ok][-1]]
     return float(min(1.0, max(0.0, best)))
 
 
@@ -581,19 +630,24 @@ def fit_binning_map(
     bins = _positive_int("bins", bins)
     min_bucket_n = _positive_int("min_bucket_n", min_bucket_n)
     recs = _iter_records(records)
-    by_bucket: Dict[str, List[Tuple[float, int]]] = {}
+    by_bucket: Dict[str, Tuple[List[float], List[int]]] = {}
     for qt, z, t, k in recs:
         y = int(np.argmax(t[:k]))
         bucket = temp_bucket(qt, k)
         t_scale = temperature_by_options.get(bucket, temperature[qt])
         p = _softmax(z[:k], t_scale)
-        by_bucket.setdefault(bucket, []).append((float(p.max()), int(int(p.argmax()) == y)))
+        entry = by_bucket.get(bucket)
+        if entry is None:
+            entry = ([], [])
+            by_bucket[bucket] = entry
+        entry[0].append(float(p.max()))
+        entry[1].append(int(int(p.argmax()) == y))
     out: Dict[str, Dict[str, Any]] = {}
-    for key, pairs in by_bucket.items():
-        if len(pairs) < min_bucket_n:
+    for key, (confs_list, corrs_list) in by_bucket.items():
+        if len(confs_list) < min_bucket_n:
             continue
-        conf = np.asarray([c for c, _ in pairs], dtype=float)
-        corr = np.asarray([c for _, c in pairs], dtype=float)
+        conf = np.asarray(confs_list, dtype=float)
+        corr = np.asarray(corrs_list, dtype=float)
         idx = np.clip((conf * bins).astype(int), 0, bins - 1)
         values = []
         for b in range(bins):
@@ -848,7 +902,7 @@ def apply_calibration_payload(obj, payload: Dict[str, Any]) -> None:
                 )
             try:
                 parsed_values = [float(v) for v in values]
-            except (TypeError, ValueError) as exc:
+            except (TypeError, ValueError, OverflowError) as exc:
                 raise ValueError(
                     "calibration JSON binning_map[%r] values must be numbers, got %r"
                     % (name, values)

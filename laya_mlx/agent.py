@@ -108,6 +108,16 @@ def collate_items(items, pad_id, *, pad_to_multiple=None, max_length=None):
     return batch
 
 
+def _refuse_vegaml(vegaml):
+    """`vegaml=None`/`False` mean the ordinary checkpoint, as upstream; anything else asks for
+    vegaml's engine, which only official laya carries."""
+    if vegaml is not None and vegaml is not False:
+        raise ValueError(
+            "vegaml=%r loads vegaml's engine, which requires official laya; this distribution "
+            "uses MLX" % (vegaml,)
+        )
+
+
 class Agent(RuntimeMixin):
     @property
     def config(self):
@@ -136,6 +146,7 @@ class Agent(RuntimeMixin):
         compile_warmup=True,
         compile_cache=False,
         compile_mode="default",
+        vegaml=None,
         *,
         dtype="float16",
         batch_size=16,
@@ -152,6 +163,7 @@ class Agent(RuntimeMixin):
             raise ValueError(
                 "This distribution uses MLX; PyTorch/CUDA/ONNX backend options require official laya"
             )
+        _refuse_vegaml(vegaml)
         import mlx.core as mx
 
         from .model import DecisionModel, EncoderConfig, sanitize_weights
@@ -399,10 +411,12 @@ def load(
     compile_warmup=True,
     compile_cache=False,
     compile_mode="default",
+    vegaml=None,
     **kwargs,
 ):
     if onnx_path is not None:
         raise ValueError("ONNX inference requires official laya; this distribution uses MLX")
+    _refuse_vegaml(vegaml)
     from .router import DEFAULT_MODELS, canonical_name
 
     name = canonical_name(str(model_id_or_path))

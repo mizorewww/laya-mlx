@@ -1,4 +1,4 @@
-"""Layout wiring, permutation equivariance, and parity with pinned upstream v0.4.17."""
+"""Layout wiring, permutation equivariance, and parity with pinned upstream."""
 
 import importlib.util
 import itertools
@@ -126,7 +126,7 @@ def test_parallel_model_matches_upstream_v0412():
     transformers = pytest.importorskip("transformers")
     path = Path(__file__).parents[1] / ".upstream/laya/common.py"
     if not path.exists():
-        pytest.skip("Check out upstream fe9a6c35 into .upstream for parallel-layout parity")
+        pytest.skip("Check out pinned upstream into .upstream for parallel-layout parity")
     spec = importlib.util.spec_from_file_location("upstream_v0412_common", path)
     upstream = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(upstream)

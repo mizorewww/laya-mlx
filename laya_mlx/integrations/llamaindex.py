@@ -426,6 +426,19 @@ class LayaSingleSelector(_TypedSelectorPrompts, BaseSelector):
         elif chosen_key in criteria:
             chosen_idx = list(criteria.keys()).index(chosen_key)
 
+        # `chosen_key` is remote JSON and `choices` is the caller's list, so two choices can be
+        # told to select `choice_9`: the parsed number indexes no choice and `choices[chosen_idx]`
+        # below raised a bare IndexError out of the selection, while `choice_-1` silently wrapped to
+        # the LAST one. `criteria` is built from exactly these choices, so an index it does not name
+        # is a candidate that does not exist -- `LayaQueryRouter.route` already treats a name outside
+        # `self.query_engines` that way, and `tools.py:493` refuses it by name.
+        if not 0 <= chosen_idx < len(choices):
+            raise _malformed(
+                where,
+                "decision %r names choice %d, which is not among the %d choices"
+                % (chosen_key, chosen_idx, len(choices)),
+            )
+
         # Confidence gating
         if self.confidence_threshold > 0.0 and conf < self.confidence_threshold:
             if self.fallback_index is not None:

@@ -149,7 +149,7 @@ def validate_questions(questions: Any) -> dict:
         if not isinstance(spec, dict):
             raise ToolError("invalid_questions", f"questions[{name}] must be an object")
         qtype = spec.get("type")
-        if qtype not in VALID_TYPES:
+        if not isinstance(qtype, str) or qtype not in VALID_TYPES:
             raise ToolError(
                 "invalid_questions",
                 f"questions[{name}].type must be one of {sorted(VALID_TYPES)}, got {qtype!r}",
@@ -550,6 +550,40 @@ def _decision_to_dict(decision: Any) -> dict:
     }
 
 
+def _validate_explain(explain: Any) -> bool:
+    if not isinstance(explain, bool):
+        raise ToolError("invalid_explain", "explain must be a boolean")
+    return explain
+
+
+def _call_route(route: Callable, *args, explain: bool, **kwargs) -> Any:
+    if not explain:
+        return route(*args, **kwargs)
+    try:
+        return route(*args, explain=True, **kwargs)
+    except TypeError as exc:
+        # Only a keyword binding refusal, not a TypeError raised inside the router.
+        # Never retry without the explanation the caller explicitly requested.
+        if exc.__traceback__.tb_next is None and "unexpected keyword argument 'explain'" in str(
+            exc
+        ):
+            raise ToolError("unsupported_explain", "router does not support explain=True") from exc
+        raise
+
+
+def _route_to_dict(decision: Any, *, explain: bool) -> dict:
+    # laya_shortlist and laya_tournament share _decision_to_dict; keep their routing output unchanged.
+    out = _decision_to_dict(decision)
+    if explain:
+        detection = (
+            decision.get("detection")
+            if isinstance(decision, dict)
+            else getattr(decision, "detection", None)
+        )
+        out["diagnostic"] = detection.get("diagnostic") if isinstance(detection, dict) else None
+    return out
+
+
 def laya_route(
     state: Any,
     questions: Any,
@@ -558,6 +592,7 @@ def laya_route(
     task: Any = None,
     lang: Any = None,
     lang_guess: Any = None,
+    explain: Any = False,
     router: Any = None,
 ) -> dict:
     """Routing decision only: no forward pass.
@@ -567,7 +602,11 @@ def laya_route(
     running anything.
     Passing a predict call's controls here reproduces the ``routing`` block it returned, which is
     what makes a route a cheap explanation of a decision rather than a different decision.
+
+    ``explain=True`` adds the final decision's built-in detection diagnostic, or ``None`` when
+    none exists. It never re-runs detection or exposes the rest of the detection payload.
     """
+    explain = _validate_explain(explain)
     state_d = validate_state(state)
     questions_d = validate_questions(questions)
     # `auto` is this layer's word for "do not pin"; core has no such name, so it becomes an absent
@@ -603,7 +642,8 @@ def laya_route(
         raise ToolError("models_not_ready", "Router is not loaded")
     if not hasattr(router, "route"):
         raise ToolError("internal_error", "router has no route() method")
-    return _decision_to_dict(router.route(state_d, questions_d, **overrides))
+    decision = _call_route(router.route, state_d, questions_d, explain=explain, **overrides)
+    return _route_to_dict(decision, explain=explain)
 
 
 # Where the reusable shortlist embedder lives. Kept private and on the agent, so the
@@ -1044,6 +1084,19 @@ def laya_predict_long(
     Each answer carries the deciding window's ``window`` attribution (index and token offsets
     into the tokenized state), and ``windows`` counts the windows the model scored.
     """
+    if (
+        router is not None
+        and agent is None
+        and hasattr(router, "base_url")
+        and hasattr(router, "health")
+    ):
+        raise ToolError(
+            "unsupported_remote",
+            "laya_predict_long scans the state window by window in-process; laya-serve has no "
+            "long-state endpoint, so it is not available when LAYA_BASE_URL points at laya-serve. "
+            "Run the MCP server without LAYA_BASE_URL to scan locally, or use laya_predict, which "
+            "answers from the first window only.",
+        )
     state_d = validate_state(state)
     questions_d = validate_questions(questions)
     model_name = validate_model(model)
@@ -1333,6 +1386,13 @@ def _validate_batch_item(request: Any, i: int) -> dict:
     for key in ("task", "lang"):
         if key in request:
             item[key] = _validate_batch_str(request[key], "%s[%r]" % (where, key))
+    # The router reads `task` only when no model is pinned, so that is when a name nothing answers
+    # to must be refused here: past this point it is a ValueError and the client sees internal_error.
+    if "task" in item and "model" not in item:
+        try:
+            validate_task(item["task"])
+        except ToolError as error:
+            raise ToolError("invalid_task", "%s['task']: %s" % (where, error)) from None
     if "lang_guess" in request:
         # Type-check it the way the single-request path does (`validate_lang_guess`), instead of
         # passing it through raw: a non-string (e.g. a JSON object) otherwise reached
@@ -1502,7 +1562,9 @@ def laya_predict_batch(
     }
 
 
-def laya_route_batch(requests: Any, hooks_timeout: Any = None, *, router: Any = None) -> dict:
+def laya_route_batch(
+    requests: Any, hooks_timeout: Any = None, *, explain: Any = False, router: Any = None
+) -> dict:
     """Routing decisions for many requests: no forward pass, no checkpoint loads.
 
     The batch form of ``laya_route``, mirroring ``Router.route_batch``: it
@@ -1511,18 +1573,18 @@ def laya_route_batch(requests: Any, hooks_timeout: Any = None, *, router: Any = 
     ``hooks_timeout`` overrides the Router's own value for this call's
     ``on_route`` dispatch, exactly as it does for ``laya_predict_batch``: an
     operator-installed hook that hangs should not stall a whole routing sweep.
+    ``explain=True`` adds a diagnostic (or ``None``) to each final decision,
+    using the same contract as ``laya_route`` and preserving input order.
     """
+    explain = _validate_explain(explain)
     items = validate_batch_requests(requests)
     timeout = _validate_hooks_timeout(hooks_timeout)
     if router is None:
         raise ToolError("models_not_ready", "Router is not loaded")
     if not hasattr(router, "route_batch"):
         raise ToolError("internal_error", "router has no route_batch() method")
-    decisions = (
-        router.route_batch(items, hooks_timeout=timeout)
-        if timeout is not None
-        else router.route_batch(items)
-    )
+    overrides = {"hooks_timeout": timeout} if timeout is not None else {}
+    decisions = _call_route(router.route_batch, items, explain=explain, **overrides)
     if not isinstance(decisions, list) or len(decisions) != len(items):
         raise ToolError(
             "internal_error",
@@ -1532,7 +1594,7 @@ def laya_route_batch(requests: Any, hooks_timeout: Any = None, *, router: Any = 
                 len(items),
             ),
         )
-    out = [_decision_to_dict(decision) for decision in decisions]
+    out = [_route_to_dict(decision, explain=explain) for decision in decisions]
     model_counts: dict[str, int] = {}
     for entry in out:
         name = entry["model"]

@@ -245,3 +245,29 @@ def test_agent_clamps_shipped_temperatures_and_keeps_raw(tiny_checkpoint):
     assert agent.temperature_by_options["choice:11+"] == TEMP_MIN
     assert agent.temperature_by_options_raw["choice:11+"] == 0.10058280825614929
     assert agent.temperature_by_options["choice:2"] == 1.7  # legitimate value untouched
+
+
+def test_checkpoint_temperature_wider_than_a_double_loads_with_neutral_fallback(tiny_checkpoint):
+    wide = 10**400
+    cfg_path = tiny_checkpoint / "rl_agent_config.json"
+    cfg = json.loads(cfg_path.read_text())
+    cfg["temperature"][0] = wide
+    cfg["temperature_by_options"]["choice:2"] = wide
+    cfg_path.write_text(json.dumps(cfg))
+    with pytest.warns(RuntimeWarning, match=str(wide)):
+        agent = Agent(tiny_checkpoint, vegaml=False)
+    assert agent.temperature == [1.0, 1.1, 2.0]
+    assert agent.temperature_by_options == {"choice:2": 1.0}
+
+
+def test_predict_batch_accepts_index_types_and_no_cap_spellings(tiny_checkpoint, questions):
+    agent = Agent(tiny_checkpoint, vegaml=None)
+    states = ["hello", "hello hello", "hello hello hello"]
+    whole = agent.predict_batch(states, questions)
+    for batch_size in (np.int64(2), 0, -1):
+        chunked = agent.predict_batch(states, questions, batch_size=batch_size)
+        for a, b in zip(whole, chunked):
+            for key in questions:
+                assert a["answers"][key]["answer_confidence"] == pytest.approx(
+                    b["answers"][key]["answer_confidence"], abs=2e-2
+                )
