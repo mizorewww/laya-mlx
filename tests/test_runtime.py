@@ -231,3 +231,17 @@ def test_lazy_dtype_export_and_native_construction(dtype, tiny_checkpoint):
     assert agent.dtype == DTYPES[dtype]
     result = agent.predict("hello", {"q": {"type": "noul", "instructions": "?"}})
     assert 0.0 <= result["answers"]["q"]["noul"] <= 1.0
+
+
+def test_agent_clamps_shipped_temperatures_and_keeps_raw(tiny_checkpoint):
+    from laya_mlx.common import TEMP_MIN
+
+    cfg_path = tiny_checkpoint / "rl_agent_config.json"
+    cfg = json.loads(cfg_path.read_text())
+    cfg["temperature_by_options"]["choice:11+"] = 0.10058280825614929
+    cfg_path.write_text(json.dumps(cfg))
+    with pytest.warns(RuntimeWarning, match="clamping"):
+        agent = Agent(tiny_checkpoint)
+    assert agent.temperature_by_options["choice:11+"] == TEMP_MIN
+    assert agent.temperature_by_options_raw["choice:11+"] == 0.10058280825614929
+    assert agent.temperature_by_options["choice:2"] == 1.7  # legitimate value untouched

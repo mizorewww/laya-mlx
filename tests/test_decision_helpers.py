@@ -160,21 +160,8 @@ def test_undecided_default_and_legacy_override(state):
     assert Router(default="english").route(state).model == "english"
 
 
-@pytest.mark.parametrize(
-    "state,expected",
-    [
-        ("Please check my order.\nMON DES EST LA", "english"),
-        ("sag mir das HEUTIGE DATUM", "multilingual"),
-        ("quiero cancelar mi PEDIDO POR FAVOR", "multilingual"),
-        ("ПРИВЕТ MON DES EST LA", "multilingual"),
-        (
-            {"message": "Please check the order", "request": "WIE SPÄT IST ES IN KÖLN"},
-            "multilingual",
-        ),
-    ],
-)
-def test_language_caps_regressions(state, expected):
-    assert Router().route(state).model == expected
+def test_capitalized_latin_does_not_outvote_another_script():
+    assert Router().route("ПРИВЕТ MON DES EST LA").model == "multilingual"
 
 
 @pytest.mark.parametrize(

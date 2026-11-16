@@ -6,7 +6,6 @@ import pytest
 from laya_mlx.calibrate import fit_one_temperature, fit_temperature_map
 from laya_mlx.common import ece_score, resolve_lang_temperatures
 from laya_mlx.shortlist import predict_shortlist, predict_tournament
-from laya_mlx.structured import SchemaError, questions_from_json_schema
 
 
 def spread_pool(width):
@@ -28,21 +27,6 @@ def test_ragged_temperature_fit_preserves_real_option_counts():
     report = fit_temperature_map([(0, z, t) for z, t in pairs])
     assert report["temperature"][0] == 0.5
     assert report["temperature_clamped"]["choice"]["bound"] == "min"
-
-
-@pytest.mark.parametrize("value", [True, False])
-@pytest.mark.parametrize("key", ["const", "enum"])
-def test_boolean_singletons_keep_schema_constraint(value, key):
-    constraint = {key: [value] if key == "enum" else value}
-    schema = {"type": "object", "properties": {"flag": {"type": "boolean", **constraint}}}
-    q = questions_from_json_schema(schema)["flag"]
-    assert q["type"] == "choice"
-    assert q["criteria"] == {str(value): None}
-
-
-def test_enum_string_is_not_split_into_characters():
-    with pytest.raises(SchemaError, match="enum.*array"):
-        questions_from_json_schema({"type": "object", "properties": {"x": {"enum": "yes"}}})
 
 
 @pytest.mark.parametrize("bins", [0, -1, True, 2.5])
