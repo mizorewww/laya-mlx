@@ -261,7 +261,8 @@ def test_checkpoint_temperature_wider_than_a_double_loads_with_neutral_fallback(
 
 
 def test_predict_batch_accepts_index_types_and_no_cap_spellings(tiny_checkpoint, questions):
-    agent = Agent(tiny_checkpoint, vegaml=None)
+    # FP32: this checks the chunking spellings, not half-precision padding behavior.
+    agent = Agent(tiny_checkpoint, dtype="float32", vegaml=None)
     states = ["hello", "hello hello", "hello hello hello"]
     whole = agent.predict_batch(states, questions)
     for batch_size in (np.int64(2), 0, -1):
@@ -269,5 +270,5 @@ def test_predict_batch_accepts_index_types_and_no_cap_spellings(tiny_checkpoint,
         for a, b in zip(whole, chunked):
             for key in questions:
                 assert a["answers"][key]["answer_confidence"] == pytest.approx(
-                    b["answers"][key]["answer_confidence"], abs=2e-2
+                    b["answers"][key]["answer_confidence"], abs=1e-4
                 )

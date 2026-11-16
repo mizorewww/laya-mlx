@@ -54,17 +54,21 @@ jobs:
       - name: Upstream host contracts
         run: pytest -q tests/test_official_host.py tests/test_official_contract.py
       # Hosted macOS 26 runners intermittently SIGBUS inside MLX's native FP16 CPU kernels in the
-      # parallel-layout permutation test, depending on what earlier tests left in the process.
-      # A fresh process passes (see the diagnostic step), and real Apple hardware passes either
-      # way. Run that file in its own process; every assertion and tolerance is unchanged.
+      # parallel-layout permutation test and the half-precision construction test, depending on
+      # what earlier tests left in the process. A fresh process passes (see the diagnostic step),
+      # and real Apple hardware passes either way. Run each of those files in its own process;
+      # every assertion and tolerance is unchanged.
       - name: Parallel-layout native tests
         if: success() || failure()
         run: python -X faulthandler -m pytest -q tests/test_parallel_layout.py
+      - name: Runtime native tests
+        if: success() || failure()
+        run: python -X faulthandler -m pytest -q tests/test_runtime.py
       - name: Native and integration tests
         if: success() || failure()
         run: >-
           pytest -q --ignore=tests/test_official_contract.py --ignore=tests/test_official_host.py
-          --ignore=tests/test_parallel_layout.py
+          --ignore=tests/test_parallel_layout.py --ignore=tests/test_runtime.py
       - name: Compare original upstream idle-window assertions
         if: failure()
         run: PYTHONPATH=.upstream python -m pytest .upstream/tests/test_serve.py -q -k idle_window
