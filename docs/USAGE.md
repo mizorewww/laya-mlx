@@ -138,7 +138,10 @@ agent = laya.load("aac6fef/laya-mlx", compile=True, pad_to_multiple=16, cache_pr
   question still gets its own encoder computation, so no encoder states or answers are reused.
 
 Constructor `batch_size` bounds tensor rows per forward pass. `predict_batch(batch_size=...)`
-groups logical requests. The measured effect on the Snake workload is in
+groups logical requests. When a native batch needs multiple forward passes, question rows are
+grouped by encoded length if this reduces padding, then restored to their original order.
+As with other batch-shape changes, floating-point results can vary slightly. Single-chunk and
+equal-length batches keep their order. The measured effect on the Snake workload is in
 [SNAKE_OPTIMIZATION.md](SNAKE_OPTIMIZATION.md).
 
 ## Confidence gate
