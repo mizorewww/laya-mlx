@@ -28,6 +28,8 @@ from .common import (
     _disable_question_token_reuse,
     _resolve_noul_labels,
     _reuse_question_tokens,
+    _state_token_ids,
+    _TokenWindow,
     answer_confidence,
     build_sequence,
     check_batch_size,
@@ -475,11 +477,7 @@ class RuntimeMixin(HookRegistry):
         # re-serializing and re-tokenizing it inside build_sequence per question was pure
         # duplicated work. Tokenize in full and let build_sequence slice per question, so
         # left-truncation for conversation lists keeps its meaning.
-        state_ids = encode_text(
-            self.tok,
-            serialize_state(state).replace(self.tok.mask_token, " "),
-            add_special_tokens=False,
-        )["input_ids"]
+        state_ids = _state_token_ids(self.tok, state)
         items = []
         for qid in ids:
             q = internal[qid]
@@ -1039,10 +1037,7 @@ class RuntimeMixin(HookRegistry):
         windows, starts = [], []
         i, n = 0, len(state_ids)
         while i < n:
-            # Decode each token window back to text so predict_batch re-tokenizes it as a normal
-            # state. For BPE tokenizers the re-tokenized boundaries can shift by a token or two vs
-            # this split; harmless for aggregation since the 50% default overlap absorbs it.
-            windows.append(self.tok.decode(state_ids[i : i + budget]))
+            windows.append(_TokenWindow(self.tok, state_ids[i : i + budget]))
             starts.append(i)
             if i + budget >= n:
                 break

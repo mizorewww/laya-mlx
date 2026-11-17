@@ -118,11 +118,23 @@ def main():
         def __init__(self):
             self.batches = []
             self.backend = self
+            self.max_length = None
+
+        def __deepcopy__(self, memo):
+            clone = type(self)()
+            clone.batches = self.batches
+            return clone
+
+        def enable_truncation(self, max_length):
+            self.max_length = max_length
+
+        def no_padding(self):
+            pass
 
         def encode(self, text, add_special_tokens=True):
             self.batches.append([text])
             ids = [(ord(ch) % 5) + 1 for ch in text] or [1]
-            return type("Encoded", (), {"ids": ids})()
+            return type("Encoded", (), {"ids": ids[:self.max_length]})()
 
 """
             + fragment[end:]

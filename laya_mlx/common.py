@@ -81,6 +81,33 @@ def serialize_state(state: Union[str, dict, list]) -> str:
     return json.dumps(state, ensure_ascii=False)
 
 
+class _TokenWindow(str):
+    """Decoded text for hooks, with the original tokens for an unchanged scan."""
+
+    def __new__(cls, tokenizer, token_ids):
+        obj = super().__new__(cls, tokenizer.decode(token_ids))
+        obj.tokenizer = tokenizer
+        obj.token_ids = tuple(token_ids)
+        return obj
+
+    def __copy__(self):
+        return self
+
+    def __deepcopy__(self, memo):
+        return self
+
+    def __reduce__(self):
+        return str, (str(self),)
+
+
+def _state_token_ids(tok, state):
+    if isinstance(state, _TokenWindow) and state.tokenizer is tok:
+        return list(state.token_ids)
+    return encode_text(
+        tok, serialize_state(state).replace(tok.mask_token, " "), add_special_tokens=False
+    )["input_ids"]
+
+
 def render_criterion(value) -> str:
     """Render one criterion value as text.
 

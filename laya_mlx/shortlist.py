@@ -18,6 +18,7 @@ whatever vectors ``embed_fn`` returns. Issue #102's BANKING77 figures belong to 
 report; this module does not measure them.
 """
 
+import copy
 import json
 import threading
 import warnings
@@ -260,6 +261,9 @@ def embed_fn_from_agent(
     import mlx.core as mx
 
     device = agent.device
+    tokenizer = copy.deepcopy(tok.backend)
+    tokenizer.enable_truncation(max_length=max_length)
+    tokenizer.no_padding()
 
     def embed_fn(texts: Sequence[str]) -> np.ndarray:
         rows = ["" if text is None else str(text) for text in texts]
@@ -269,9 +273,7 @@ def embed_fn_from_agent(
         parts: List[np.ndarray] = []
         for start in range(0, len(rows), batch_size):
             chunk = rows[start : start + batch_size]
-            encoded = [
-                tok.backend.encode(text, add_special_tokens=True).ids[:max_length] for text in chunk
-            ]
+            encoded = [tokenizer.encode(text, add_special_tokens=True).ids for text in chunk]
             length = max(1, max(len(ids) for ids in encoded))
             input_ids = np.full((len(encoded), length), tok.pad_token_id, dtype=np.int32)
             attention_mask = np.zeros((len(encoded), length), dtype=np.bool_)
@@ -324,7 +326,8 @@ def cached_embed_fn(
     The wrapper is safe to share between threads: the lock covers only cache reads and
     writes, never the embedding call. The returned callable carries ``cache_info()`` --
     a dict with ``size``, ``maxsize``, ``hits`` and ``misses`` -- and ``cache_clear()``.
-    Clear the cache if the model or weights behind ``embed_fn`` change.
+    Clear the cache if the model or weights behind ``embed_fn`` change. Calls already in
+    flight still return their result, but cannot refill the cleared cache.
     """
     if not callable(embed_fn):
         raise TypeError("embed_fn must be callable")
@@ -334,12 +337,14 @@ def cached_embed_fn(
     rows_by_text: OrderedDict[str, np.ndarray] = OrderedDict()
     lock = threading.Lock()
     counts = {"hits": 0, "misses": 0}
+    generation = 0
 
     def cached(texts: Sequence[str]) -> np.ndarray:
         keys = ["" if text is None else str(text) for text in texts]
         if not keys:
             return np.zeros((0, 0), dtype=np.float32)
         with lock:
+            started_generation = generation
             found: Dict[str, np.ndarray] = {}
             hits = 0
             for key in keys:
@@ -362,7 +367,10 @@ def cached_embed_fn(
                     % (len(missing), tuple(fresh.shape))
                 )
             fresh = np.nan_to_num(fresh, copy=True, nan=0.0, posinf=0.0, neginf=0.0)
+            found.update(zip(missing, fresh))
             with lock:
+                if generation != started_generation:
+                    return np.stack([found[key] for key in keys])
                 if rows_by_text:
                     # Rows stored under one dimensionality cannot be stacked against rows of
                     # another: a changed embedder (or one whose dimension drifts between calls)
@@ -384,7 +392,6 @@ def cached_embed_fn(
                     rows_by_text.move_to_end(key)
                     while len(rows_by_text) > maxsize:
                         rows_by_text.popitem(last=False)
-                    found[key] = row
         return np.stack([found[key] for key in keys])
 
     def cache_info() -> Dict[str, int]:
@@ -397,7 +404,9 @@ def cached_embed_fn(
             }
 
     def cache_clear() -> None:
+        nonlocal generation
         with lock:
+            generation += 1
             rows_by_text.clear()
             counts["hits"] = 0
             counts["misses"] = 0

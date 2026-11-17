@@ -1,7 +1,41 @@
+import ast
+import copy
 import json
 import os
 
 import pytest
+
+
+@pytest.fixture
+def host_method_ast():
+    """Normalize only the two token-preserving expressions when pinning host methods."""
+    replacements = {
+        "_state_token_ids(self.tok, state)": (
+            'encode_text(self.tok, serialize_state(state).replace(self.tok.mask_token, " "), '
+            'add_special_tokens=False)["input_ids"]'
+        ),
+        "_TokenWindow(self.tok, state_ids[i:i + budget])": (
+            "self.tok.decode(state_ids[i:i + budget])"
+        ),
+    }
+    expressions = {
+        ast.dump(ast.parse(native, mode="eval").body): ast.parse(upstream, mode="eval").body
+        for native, upstream in replacements.items()
+    }
+
+    class WindowTokens(ast.NodeTransformer):
+        def visit_Call(self, node):
+            replacement = expressions.get(ast.dump(node))
+            return (
+                copy.deepcopy(replacement) if replacement is not None else self.generic_visit(node)
+            )
+
+    def dump(node):
+        node = WindowTokens().visit(copy.deepcopy(node))
+        node.decorator_list = []
+        return ast.dump(node, include_attributes=False)
+
+    return dump
 
 
 def pytest_sessionstart(session):
