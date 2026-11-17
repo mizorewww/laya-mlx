@@ -211,12 +211,15 @@ class HeadAttention(nn.Module):
         self.in_proj = nn.Linear(dims, 3 * dims)
         self.out_proj = nn.Linear(dims, dims)
 
-    def __call__(self, x, mask):
+    def __call__(self, x, mask, output_positions=None):
         b, length, _ = x.shape
         qkv = self.in_proj(x).reshape(b, length, 3, self.num_heads, self.head_dim)
         q, k, v = [qkv[:, :, i].transpose(0, 2, 1, 3) for i in range(3)]
         out = mx.fast.scaled_dot_product_attention(q, k, v, scale=self.head_dim**-0.5, mask=mask)
-        return self.out_proj(out.transpose(0, 2, 1, 3).reshape(b, length, -1))
+        out = out.transpose(0, 2, 1, 3).reshape(b, length, -1)
+        if output_positions is not None:
+            out = out[mx.arange(b)[:, None], output_positions]
+        return self.out_proj(out)
 
 
 class HeadLayer(nn.Module):
@@ -228,8 +231,11 @@ class HeadLayer(nn.Module):
         self.linear1 = nn.Linear(dims, 4 * dims)
         self.linear2 = nn.Linear(4 * dims, dims)
 
-    def __call__(self, x, mask):
-        x = x + self.self_attn(self.norm1(x), mask)
+    def __call__(self, x, mask, output_positions=None):
+        attended = self.self_attn(self.norm1(x), mask, output_positions)
+        if output_positions is not None:
+            x = x[mx.arange(x.shape[0])[:, None], output_positions]
+        x = x + attended
         # PyTorch TransformerEncoderLayer defaults to ReLU, even though the
         # encoder and scoring heads use GELU.
         return x + self.linear2(nn.relu(self.linear1(self.norm2(x))))
@@ -240,9 +246,11 @@ class DecisionHead(nn.Module):
         super().__init__()
         self.layers = [HeadLayer(dims) for _ in range(count)]
 
-    def __call__(self, x, mask):
-        for layer in self.layers:
-            x = layer(x, mask)
+    def __call__(self, x, mask, output_positions=None):
+        for index, layer in enumerate(self.layers):
+            x = layer(x, mask, output_positions if index == len(self.layers) - 1 else None)
+        if not self.layers and output_positions is not None:
+            x = x[mx.arange(x.shape[0])[:, None], output_positions]
         return x
 
 
@@ -278,8 +286,13 @@ class DecisionModel(nn.Module):
             raise ValueError("Batch option layout does not match checkpoint option_layout")
         h = self.encoder(input_ids, attention_mask, position_ids, option_ids)
         h = h + self.type_emb(qtype)[:, None, :]
-        h = self.head(h, attention_mask[:, None, None, :].astype(mx.bool_))
-        markers = h[mx.arange(h.shape[0])[:, None], mx.maximum(marker_pos, 0)]
+        # Only CLS and option markers are read after the final head layer. Keep
+        # full attention, but omit unused output projections and token-wise FFNs.
+        positions = mx.concatenate(
+            [mx.zeros((h.shape[0], 1), dtype=mx.int32), mx.maximum(marker_pos, 0)], axis=1
+        )
+        h = self.head(h, attention_mask[:, None, None, :].astype(mx.bool_), positions)
+        markers = h[:, 1:]
         if self.parallel:
             # Accumulate the one-channel projection in FP32. MLX 0.32 CPU FP16
             # matmul can mix adjacent rows here, breaking permutation equivariance
