@@ -87,10 +87,12 @@ PR is merged, tagged and released. Real-checkpoint validation and the wheel smok
 of that path; run them afterwards.
 
 New issues get an automated first reply, and `@claude` in a comment asks Claude Code for more.
-Pull requests get an automated review. Claude only reads and decides; the replies, reviews,
-closes, approvals, fix commits and merges are made under the maintainer's account with the
-`MAINTAINER_TOKEN` secret. For contributors outside the repository the reviewer closes pull
-requests that are not needed, removes redundant code and tests and fixes what it can when "Allow
-edits by maintainers" is on (committed as the maintainer with Claude as co-author), and approves
-with "LGTM"; the pull request is then squash-merged once CI passes on that commit. Collaborators'
+Pull requests get an automated review. Claude only reads and decides; replies, closes, approvals,
+commits and merges are made under the maintainer's account with the `MAINTAINER_TOKEN` secret.
+A pull request from a contributor outside the repository is closed when it is not needed, and
+otherwise taken over without waiting for the author: conflicts with `main` resolved, redundant
+code and tests removed, problems fixed, committed as the maintainer with Claude as co-author, and
+squash-merged once CI passes. The changes go to the contributor's branch when "Allow edits by
+maintainers" is on, else to an `adopt/pr-<n>` pull request that closes the original when it
+merges. Pull requests that change `.github/` are never merged automatically, and collaborators'
 pull requests get a review only.

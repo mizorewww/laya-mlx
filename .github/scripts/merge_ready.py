@@ -1,14 +1,19 @@
-"""Merge a contributor's pull request that the automated review approved, once CI passes.
+"""Merge a contributor's pull request that the automated review took over, once CI passes.
 
 Called by review_act.py right after an approval, and by pr-merge.yml whenever a
 CI run finishes. It merges only when all of these hold for the pull request's
-current head: the pull request is open and comes from a contributor outside the
-repository, the maintainer's latest review is the automation's approval of that
-exact commit, and the latest CI run on that commit succeeded.
+current head:
+
+- it is open, changes nothing under .github/, and either comes from a contributor
+  outside the repository with the automation's approval of that exact commit as
+  the maintainer's latest review, or is an adopt/pr-<n> pull request the
+  automation opened (then the adopted pull request is closed after the merge);
+- the latest CI run on that commit succeeded.
 """
 
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -18,6 +23,7 @@ TOKEN = os.environ["MAINTAINER_TOKEN"]
 CI_WORKFLOW = os.environ["CI_WORKFLOW"]
 MARKER = "Automated review drafted by Claude Code."
 TRUSTED = {"OWNER", "MEMBER", "COLLABORATOR"}
+ADOPT_PREFIX = "adopt/pr-"
 
 
 def api(method, path, body=None):
@@ -35,25 +41,50 @@ def api(method, path, body=None):
         return json.loads(response.read() or "null")
 
 
-def not_ready(pr):
+def touches_github(number):
+    files = api("GET", f"repos/{REPO}/pulls/{number}/files?per_page=100")
+    return len(files) == 100 or any(
+        f["filename"].startswith(".github/")
+        or f.get("previous_filename", "").startswith(".github/")
+        for f in files
+    )
+
+
+def adopted(pr, me):
+    """The pull request an adopt/pr-<n> pull request continues, or None."""
+    match = re.match(r"Adopts #(\d+) ", pr["body"] or "")
+    if (
+        pr["head"]["ref"].startswith(ADOPT_PREFIX)
+        and pr["head"]["repo"]["full_name"] == REPO
+        and pr["user"]["login"] == me
+        and MARKER in (pr["body"] or "")
+        and match
+    ):
+        return match.group(1)
+    return None
+
+
+def not_ready(pr, me):
     """Why the pull request cannot be merged yet, or None."""
     sha = pr["head"]["sha"]
     if pr["state"] != "open" or pr["draft"]:
         return "not open"
-    if pr["author_association"] in TRUSTED:
-        return "collaborators merge their own pull requests"
-    me = api("GET", "user")["login"]
-    mine = [
-        r
-        for r in api("GET", f"repos/{REPO}/pulls/{pr['number']}/reviews?per_page=100")
-        if r["user"]["login"] == me
-    ]
-    if not mine or not (
-        mine[-1]["state"] == "APPROVED"
-        and mine[-1]["commit_id"] == sha
-        and MARKER in (mine[-1]["body"] or "")
-    ):
-        return "no automated approval of the current head"
+    if touches_github(pr["number"]):
+        return "it changes .github/"
+    if not adopted(pr, me):
+        if pr["author_association"] in TRUSTED:
+            return "collaborators merge their own pull requests"
+        mine = [
+            r
+            for r in api("GET", f"repos/{REPO}/pulls/{pr['number']}/reviews?per_page=100")
+            if r["user"]["login"] == me
+        ]
+        if not mine or not (
+            mine[-1]["state"] == "APPROVED"
+            and mine[-1]["commit_id"] == sha
+            and MARKER in (mine[-1]["body"] or "")
+        ):
+            return "no automated approval of the current head"
     runs = api("GET", f"repos/{REPO}/actions/runs?head_sha={sha}&per_page=100")["workflow_runs"]
     runs = [r for r in runs if r["name"] == CI_WORKFLOW and r["event"] == "pull_request"]
     if not runs:
@@ -66,7 +97,8 @@ def not_ready(pr):
 
 def merge_if_ready(number):
     pr = api("GET", f"repos/{REPO}/pulls/{number}")
-    reason = not_ready(pr)
+    me = api("GET", "user")["login"]
+    reason = not_ready(pr, me)
     if reason:
         print(f"#{number} not merged: {reason}.")
         return False
@@ -88,6 +120,13 @@ def merge_if_ready(number):
         print(f"#{number} not merged: GitHub refused the merge ({error.code}): {message}")
         return False
     print(f"#{number} merged.")
+    if original := adopted(pr, me):
+        api(
+            "POST",
+            f"repos/{REPO}/issues/{original}/comments",
+            {"body": f"Merged in #{number}. Thank you!\n\n<sub>{MARKER}</sub>"},
+        )
+        api("PATCH", f"repos/{REPO}/pulls/{original}", {"state": "closed"})
     return True
 
 
