@@ -84,5 +84,9 @@ Upstream releases are ported and released without a maintainer. Renovate opens a
 `renovate/upstream-laya` for each upstream tag, Claude Code ports it there following
 [.github/upstream-port.md](.github/upstream-port.md), and when every check passes and CI is green the
 PR is merged, tagged and released. Real-checkpoint validation and the wheel smoke test are not part
-of that path; run them afterwards. Issues and pull requests get an automated first reply and
-review, and `@claude` in a comment asks Claude Code for more.
+of that path; run them afterwards.
+
+New issues get an automated first reply, and `@claude` in a comment asks Claude Code for more.
+Pull requests get an automated review. For contributors outside the repository, the reviewer may
+also close a pull request it finds of no value, or push fixes to one worth taking when "Allow
+edits by maintainers" is on; CI then tests those fixes on the pull request. It never merges.
