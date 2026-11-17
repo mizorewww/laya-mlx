@@ -124,7 +124,7 @@ jobs:
             --model claude-opus-5-5
             --max-turns 120
             --allowedTools "Read,Glob,Grep,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr list:*),Bash(gh search prs:*)"
-            --json-schema '{"type":"object","required":["action","summary"],"properties":{"action":{"enum":["close","adopt","review"]},"summary":{"type":"string"},"findings":{"type":"array","items":{"type":"object","required":["path","line","body"],"properties":{"path":{"type":"string"},"line":{"type":"integer"},"body":{"type":"string"}}}},"edits":{"type":"array","items":{"type":"object","required":["path"],"properties":{"path":{"type":"string"},"old":{"type":"string"},"new":{"type":"string"},"delete":{"type":"boolean"}}}},"commit_message":{"type":"string"}}}'
+            --json-schema '{"type":"object","required":["action","summary"],"properties":{"action":{"enum":["close","adopt","review"]},"summary":{"type":"string"},"findings":{"type":"array","items":{"type":"object","required":["path","line","body"],"properties":{"path":{"type":"string"},"line":{"type":"integer"},"body":{"type":"string"}}}},"edits":{"type":"array","items":{"type":"object","required":["path"],"properties":{"path":{"type":"string"},"old":{"type":"string"},"new":{"type":"string"},"content":{"type":"string"},"delete":{"type":"boolean"}}}},"commit_message":{"type":"string"}}}'
           prompt: |
             REPO: ${{ github.repository }}
             PR: #${{ env.PR }} (head ${{ steps.pr.outputs.head_repo }}:${{ steps.pr.outputs.head_ref }} at ${{ steps.pr.outputs.head_sha }})
@@ -172,10 +172,13 @@ jobs:
             - "review": only when you cannot judge it confidently, or may not close or take it
               over. The maintainer decides.
 
-            `edits`, `path` relative to the repository root: an exact replacement where `old`
-            occurs exactly once in the current file in pr/ (or is "" to create a file), or
-            `"delete": true` to remove a file. To resolve a conflict, replace the whole block from
-            `<<<<<<<` to `>>>>>>>`.
+            `edits`, `path` relative to the repository root, applied in order to the files in pr/:
+            - `old`/`new`: an exact replacement; `old` must occur exactly once in the file as it
+              stands after the earlier edits (Read it to copy the text exactly, with enough
+              context to be unique). `old` "" creates a new file.
+            - `content`: the whole new file. Prefer this to many replacements in one file, and to
+              resolve a file's conflicts (it must contain no conflict markers).
+            - `"delete": true`: remove the file.
 
             `findings` (review only): each problem on a line the PR adds or changes (`path` and its
             `line` in the PR head), most severe first. `summary` is posted as the maintainer, so

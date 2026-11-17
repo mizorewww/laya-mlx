@@ -66,23 +66,27 @@ def planned_edits(edits):
     Nothing is written.
     """
     files = {}
-    for edit in edits:
+    for number, edit in enumerate(edits, 1):
+        where = f"edit {number} ({edit['path']})"
         path = (WORK / edit["path"]).resolve()
         if WORK not in path.parents or ".git" in path.relative_to(WORK).parts:
-            raise ValueError(f"{edit['path']}: outside the pull request checkout")
+            raise ValueError(f"{where}: outside the pull request checkout")
         if path not in files:
             files[path] = path.read_text() if path.exists() else None
         text, old = files[path], edit.get("old", "")
         if edit.get("delete"):
             if text is None:
-                raise ValueError(f"{edit['path']}: cannot delete a missing file")
+                raise ValueError(f"{where}: cannot delete a missing file")
             files[path] = None
+        elif "content" in edit:
+            files[path] = edit["content"]
         elif old == "":
             if text is not None:
-                raise ValueError(f"{edit['path']}: empty `old` but the file exists")
+                raise ValueError(f"{where}: empty `old` but the file exists")
             files[path] = edit.get("new", "")
         elif text is None or text.count(old) != 1:
-            raise ValueError(f"{edit['path']}: `old` does not occur exactly once")
+            found = 0 if text is None else text.count(old)
+            raise ValueError(f"{where}: `old` occurs {found} times, not once")
         else:
             files[path] = text.replace(old, edit.get("new", ""), 1)
     return files
