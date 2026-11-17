@@ -81,8 +81,11 @@ def merge_if_ready(number):
             },
         )
     except urllib.error.HTTPError as error:
-        # 405: not mergeable (conflicts); 409: the head moved since the check.
-        print(f"#{number} not merged: GitHub refused the merge ({error.code}).")
+        # 405: not mergeable (conflicts); 409: the head moved since the check; 403: the
+        # token lacks a scope (merging a branch that predates a workflow change needs
+        # `workflow`).
+        message = json.loads(error.read() or "{}").get("message", "")
+        print(f"#{number} not merged: GitHub refused the merge ({error.code}): {message}")
         return False
     print(f"#{number} merged.")
     return True
