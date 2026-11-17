@@ -105,11 +105,15 @@ def unresolved():
 
 
 def push(url, ref):
-    return not subprocess.run(
+    result = subprocess.run(
         ["git", "push", "-q", "--force", url, f"HEAD:refs/heads/{ref}"],
         env=GIT_ENV,
         capture_output=True,
-    ).returncode
+        text=True,
+    )
+    if result.returncode:
+        print(f"Push to {ref} failed: {result.stderr.replace(TOKEN, '***').strip()}")
+    return not result.returncode
 
 
 def approve(sha, body):
@@ -185,9 +189,9 @@ def adopt(out, pr):
         "POST",
         f"repos/{REPO}/issues/{PR}/comments",
         {
-            "body": out["summary"] + "\n\nThis branch does not accept edits from maintainers, "
-            f"so I continued it in #{number}. It merges once CI passes, and this pull request "
-            "is closed then. Thank you!" + FOOTER
+            "body": out["summary"] + "\n\nI could not push to this branch, so I continued it "
+            f"in #{number}. It merges once CI passes, and this pull request is closed then. "
+            "Thank you!" + FOOTER
         },
     )
     return f"continued in #{number}"
