@@ -104,10 +104,11 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           allowed_non_write_users: "*"
+          # Path rules are absolute (//...): relative ones did not match in the action.
           claude_args: >-
             --model claude-opus-5-5
             --max-turns 120
-            --allowedTools "Read,Glob,Grep,mcp__github_inline_comment__create_inline_comment,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr list:*),Bash(gh search prs:*)${{ steps.pr.outputs.act == 'true' && ',Bash(gh pr close:*),Write(pr-lgtm.md)' || '' }}${{ steps.pr.outputs.fix == 'true' && ',Edit(pr/**),Write(pr/**),Write(pr-fix.md)' || '' }}"
+            --allowedTools "Read,Glob,Grep,mcp__github_inline_comment__create_inline_comment,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr list:*),Bash(gh search prs:*)${{ steps.pr.outputs.act == 'true' && ',Bash(gh pr close:*),Write(/${{ github.workspace }}/pr-lgtm.md)' || '' }}${{ steps.pr.outputs.fix == 'true' && ',Edit(/${{ github.workspace }}/pr/**),Write(/${{ github.workspace }}/pr/**),Write(/${{ github.workspace }}/pr-fix.md)' || '' }}"
           prompt: |
             REPO: ${{ github.repository }}
             PR: #${{ env.PR }} (head ${{ steps.pr.outputs.head_repo }}:${{ steps.pr.outputs.head_ref }} at ${{ steps.pr.outputs.head_sha }})
