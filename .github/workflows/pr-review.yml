@@ -21,24 +21,46 @@ on:
         description: Pull request number
         required: true
 
+# Outside contributors cannot start runs that use the Claude GitHub App, so this
+# workflow acts through GITHUB_TOKEN (comments, close and LGTM come from
+# github-actions[bot]). GITHUB_TOKEN cannot push to forks: fixes are pushed with
+# the PR_FIX_TOKEN secret, which only the push step sees, or posted as a patch.
 permissions:
   contents: read
   pull-requests: write
   issues: write
-  id-token: write
-
-concurrency:
-  group: pr-review-${{ github.event.pull_request.number || inputs.pr }}
-  cancel-in-progress: true
 
 jobs:
-  review:
-    # Skip Claude's own pushes, which would otherwise review the fix again.
+  gate:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (!github.event.pull_request.draft &&
-       github.event.pull_request.user.login != 'renovate[bot]' &&
-       github.event.sender.login != 'claude[bot]')
+       github.event.pull_request.user.login != 'renovate[bot]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.gate.outputs.run }}
+    steps:
+      # Skip the push of the reviewer's own fix, which would otherwise review it again.
+      - id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTION: ${{ github.event.action }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          run=true
+          if [ "$ACTION" = synchronize ] &&
+             [ "$(gh api "repos/$GITHUB_REPOSITORY/commits/$SHA" --jq .commit.committer.name)" = "claude[bot]" ]; then
+            run=false
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
+  review:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    concurrency:
+      group: pr-review-${{ github.event.pull_request.number || inputs.pr }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -80,6 +102,7 @@ jobs:
         id: claude
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           allowed_non_write_users: "*"
           claude_args: >-
             --model claude-opus-5-5
@@ -136,7 +159,7 @@ jobs:
       - name: Push Claude's fixes and LGTM
         if: steps.pr.outputs.act == 'true'
         env:
-          APP_TOKEN: ${{ steps.claude.outputs.github_token }}
+          PUSH_TOKEN: ${{ secrets.PR_FIX_TOKEN }}
           FIX: ${{ steps.pr.outputs.fix }}
           HEAD_REPO: ${{ steps.pr.outputs.head_repo }}
           HEAD_REF: ${{ steps.pr.outputs.head_ref }}
@@ -144,7 +167,6 @@ jobs:
           AUTHOR: mizorewww <aac6fef@icloud.com>
           CO_AUTHOR: "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
         run: |
-          echo "::add-mask::$APP_TOKEN"
           if [ "$(gh pr view "$PR" --json state --jq .state)" != OPEN ]; then
             echo "Pull request is not open."
             exit 0
@@ -159,7 +181,8 @@ jobs:
             git add -A
             git commit -q --author "$AUTHOR" --trailer "$CO_AUTHOR" -F "$W/pr-fix.md"
             git diff HEAD~1 > "$W/pr-fix.patch"
-            if ! git push "https://x-access-token:${APP_TOKEN}@github.com/${HEAD_REPO}.git" "HEAD:refs/heads/${HEAD_REF}"; then
+            if [ -z "$PUSH_TOKEN" ] ||
+               ! git push "https://x-access-token:${PUSH_TOKEN}@github.com/${HEAD_REPO}.git" "HEAD:refs/heads/${HEAD_REF}"; then
               pushed=false
               {
                 echo "Automated review could not push its fix to \`${HEAD_REPO}:${HEAD_REF}\`. The same change as a patch:"
@@ -172,5 +195,5 @@ jobs:
             fi
           fi
           if [ -f "$W/pr-lgtm.md" ] && [ "$pushed" = true ]; then
-            GH_TOKEN="$APP_TOKEN" gh pr review "$PR" --approve --body-file "$W/pr-lgtm.md"
+            gh pr review "$PR" --approve --body-file "$W/pr-lgtm.md"
           fi

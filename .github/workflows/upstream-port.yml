@@ -13,7 +13,7 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
-  id-token: write
+  actions: write
 
 concurrency:
   group: upstream-port
@@ -44,6 +44,7 @@ jobs:
       - name: Resolve upstream range
         id: range
         run: |
+          echo "start=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           pin() { sed -nE 's/^ +ref: ([0-9a-f]{40}) # (v[^ ]+)$/\1 \2/p' | head -1; }
           read -r old_sha old_tag < <(git show origin/main:.github/workflows/ci.yml | pin)
           read -r new_sha new_tag < <(pin < .github/workflows/ci.yml)
@@ -67,6 +68,8 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # The Claude GitHub App does not act for Renovate; push with GITHUB_TOKEN.
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           # The trigger is renovate[bot]; the branch lives in this repository.
           allowed_bots: renovate
           restrict_untrusted_prs: "false"
@@ -84,3 +87,12 @@ jobs:
 
             Read .github/upstream-port.md and follow it exactly. In that file OLD/NEW stand for the commits
             above and OLD_VERSION for the current port's version without the leading v.
+      # A push with GITHUB_TOKEN starts no workflow, so run CI on the port explicitly;
+      # upstream-release.yml acts when it passes.
+      - name: Run CI on the port
+        if: always()
+        run: |
+          git fetch -q origin "$BRANCH"
+          if [ "$(git rev-parse "origin/$BRANCH")" != "${{ steps.range.outputs.start }}" ]; then
+            gh workflow run ci.yml --ref "$BRANCH"
+          fi
