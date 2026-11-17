@@ -89,4 +89,6 @@ of that path; run them afterwards.
 New issues get an automated first reply, and `@claude` in a comment asks Claude Code for more.
 Pull requests get an automated review. For contributors outside the repository, the reviewer may
 also close a pull request it finds of no value, or push fixes to one worth taking when "Allow
-edits by maintainers" is on; CI then tests those fixes on the pull request. It never merges.
+edits by maintainers" is on, committed as the maintainer with Claude as co-author; CI then tests
+them on the pull request. When it judges a pull request ready, it approves with "LGTM". Merging
+stays with the maintainer.

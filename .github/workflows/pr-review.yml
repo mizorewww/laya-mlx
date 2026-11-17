@@ -84,11 +84,11 @@ jobs:
           claude_args: >-
             --model claude-opus-5-5
             --max-turns 120
-            --allowedTools "Read,Glob,Grep,mcp__github_inline_comment__create_inline_comment,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr list:*),Bash(gh search prs:*)${{ steps.pr.outputs.act == 'true' && ',Bash(gh pr close:*)' || '' }}${{ steps.pr.outputs.fix == 'true' && ',Edit(pr/**),Write(pr/**),Write(pr-fix.md)' || '' }}"
+            --allowedTools "Read,Glob,Grep,mcp__github_inline_comment__create_inline_comment,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr list:*),Bash(gh search prs:*)${{ steps.pr.outputs.act == 'true' && ',Bash(gh pr close:*),Write(pr-lgtm.md)' || '' }}${{ steps.pr.outputs.fix == 'true' && ',Edit(pr/**),Write(pr/**),Write(pr-fix.md)' || '' }}"
           prompt: |
             REPO: ${{ github.repository }}
             PR: #${{ env.PR }} (head ${{ steps.pr.outputs.head_repo }}:${{ steps.pr.outputs.head_ref }} at ${{ steps.pr.outputs.head_sha }})
-            You may close it: ${{ steps.pr.outputs.act }}
+            You may close it or mark it LGTM: ${{ steps.pr.outputs.act }}
             You may edit it: ${{ steps.pr.outputs.fix }}
 
             The working tree is the base branch. The pull request's files are in pr/ and its change
@@ -115,46 +115,62 @@ jobs:
                can fix confidently. Edit the files under pr/ only: smallest changes that resolve
                your findings, keeping the author's intent and code. Add or adjust regression tests
                when a fix needs them, never weaken an existing assertion. Write the commit message
-               to pr-fix.md (a subject under 72 characters, a blank line, then what you changed
-               and why). The workflow pushes it to the PR after you finish, and CI tests it there.
-               Post one `gh pr comment` listing what you changed and anything left for the author
-               or maintainer.
+               to pr-fix.md: a subject under 72 characters, a blank line, then what you changed
+               and why; no trailers, the workflow adds them. The workflow commits and pushes it to
+               the PR after you finish, and CI tests it there. Post one `gh pr comment` listing
+               what you changed and anything left for the author or maintainer.
 
             3. **Review only**, in every other case, including when you may not close or edit.
                Put each finding as an inline comment on its line (or as `file:line` in the
                summary if inline comments are unavailable), and finish with one `gh pr comment`
-               summary. If nothing is wrong, say so in one line.
+               summary.
 
-            Never approve, request changes or merge; the maintainer decides. Say in your comment
-            that it is an automated review.
-      - name: Push Claude's fixes
-        if: >-
-          steps.pr.outputs.fix == 'true' && hashFiles('pr-fix.md') != ''
+            **LGTM** (only if you may mark it, after Fix or when Review only found nothing): if the
+            pull request, with your fixes, is correct, in scope and ready for the maintainer to
+            merge once CI passes, write pr-lgtm.md: "LGTM" and one or two sentences on why. The
+            workflow submits it as an approving review after your fixes are pushed. Leave it out
+            if anything is left for the author or you are unsure.
+
+            Never request changes or merge; the maintainer merges. Say in your comment that it is
+            an automated review.
+      - name: Push Claude's fixes and LGTM
+        if: steps.pr.outputs.act == 'true'
         env:
           APP_TOKEN: ${{ steps.claude.outputs.github_token }}
+          FIX: ${{ steps.pr.outputs.fix }}
           HEAD_REPO: ${{ steps.pr.outputs.head_repo }}
           HEAD_REF: ${{ steps.pr.outputs.head_ref }}
+          # Fixes are committed as the maintainer, with Claude as co-author.
+          AUTHOR: mizorewww <aac6fef@icloud.com>
+          CO_AUTHOR: "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
         run: |
           echo "::add-mask::$APP_TOKEN"
-          export GIT_DIR="$RUNNER_TEMP/pr.git" GIT_WORK_TREE="$GITHUB_WORKSPACE/pr"
-          state=$(gh pr view "$PR" --json state --jq .state)
-          cd pr
-          if [ "$state" != OPEN ] || [ -z "$(git status --porcelain)" ]; then
-            echo "Nothing to push (state $state)."
+          if [ "$(gh pr view "$PR" --json state --jq .state)" != OPEN ]; then
+            echo "Pull request is not open."
             exit 0
           fi
-          git config user.name "claude[bot]"
-          git config user.email "41898282+claude[bot]@users.noreply.github.com"
-          git add -A
-          git commit -q -F ../pr-fix.md
-          git diff HEAD~1 > ../pr-fix.patch
-          if ! git push "https://x-access-token:${APP_TOKEN}@github.com/${HEAD_REPO}.git" "HEAD:refs/heads/${HEAD_REF}"; then
-            {
-              echo "Automated review could not push its fix to \`${HEAD_REPO}:${HEAD_REF}\`. The same change as a patch:"
-              echo
-              echo '```diff'
-              head -c 60000 ../pr-fix.patch
-              echo '```'
-            } > ../pr-fix-comment.md
-            gh pr comment "$PR" --body-file ../pr-fix-comment.md
+          # git runs inside the work tree, so the files Claude wrote are named by absolute path.
+          W=$GITHUB_WORKSPACE
+          export GIT_DIR="$RUNNER_TEMP/pr.git" GIT_WORK_TREE="$W/pr"
+          pushed=true
+          if [ "$FIX" = true ] && [ -f "$W/pr-fix.md" ] && [ -n "$(git status --porcelain)" ]; then
+            git config user.name "claude[bot]"
+            git config user.email "41898282+claude[bot]@users.noreply.github.com"
+            git add -A
+            git commit -q --author "$AUTHOR" --trailer "$CO_AUTHOR" -F "$W/pr-fix.md"
+            git diff HEAD~1 > "$W/pr-fix.patch"
+            if ! git push "https://x-access-token:${APP_TOKEN}@github.com/${HEAD_REPO}.git" "HEAD:refs/heads/${HEAD_REF}"; then
+              pushed=false
+              {
+                echo "Automated review could not push its fix to \`${HEAD_REPO}:${HEAD_REF}\`. The same change as a patch:"
+                echo
+                echo '```diff'
+                head -c 60000 "$W/pr-fix.patch"
+                echo '```'
+              } > "$W/pr-fix-comment.md"
+              gh pr comment "$PR" --body-file "$W/pr-fix-comment.md"
+            fi
+          fi
+          if [ -f "$W/pr-lgtm.md" ] && [ "$pushed" = true ]; then
+            GH_TOKEN="$APP_TOKEN" gh pr review "$PR" --approve --body-file "$W/pr-lgtm.md"
           fi
