@@ -246,8 +246,7 @@ def embed_fn_from_agent(
     for callers who only have the Laya checkpoint in memory.
 
     Padding positions are excluded from the mean. The encoder runs in eval mode on the
-    agent's own device (a loaded ``Agent`` is already in eval). A private tokenizer copy
-    truncates while preserving special tokens, leaving prediction tokenization unchanged.
+    agent's own device (a loaded ``Agent`` is already in eval).
     """
     if isinstance(max_length, bool) or not isinstance(max_length, int) or max_length < 1:
         raise ValueError("max_length must be a positive integer, got %r" % (max_length,))
