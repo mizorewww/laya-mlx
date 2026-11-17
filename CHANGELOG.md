@@ -3,9 +3,36 @@
 Each release names the upstream [Laya](https://github.com/NandhaKishorM/laya) revision whose host
 behavior it follows. Detailed records live in [docs/](docs/README.md).
 
+## 0.7.0 — 2026-11-16
+
+Follows upstream **v0.4.34** (`80a1da1f`). [Compatibility record](docs/UPSTREAM.md).
+
+- **Routing without inference:** `POST /v1/route` on `laya-mlx-serve`, and `explain` on the MCP
+  `laya_route` and `laya_route_batch` tools, return the decision and its language diagnostic.
+- **Router vega lane:** `Router(vega=agent)` sends images, audio, video, over-long states and
+  questions with fitted heads to an already built vega agent. laya-mlx does not include the vegaml
+  engine: `Agent(vegaml=True)`, `load(vegaml=True)` and `Router(vega=True)` raise, and the lane is
+  off by default.
+- **LangChain:** `LayaRouter(decision_policy="native")` follows an answer's `auto`/`review` route.
+  `LayaToolSelector` accepts a per-bucket `min_confidence` map.
+- **Stricter validation (may raise where 0.6.0 accepted input):** a non-integer `batch_size`,
+  malformed checkpoint source pairs, decisions naming an agent or choice outside the list,
+  non-array `anyOf`/`oneOf`, wide integers in calibration bins, and media keys in HTTP bodies.
+- **Fixes:** temperatures, confidences and guard values written as integers wider than a double no
+  longer crash a load or a decision; BOM-prefixed eval datasets and reports are read;
+  `OptionStabilityHook` no longer counts a rename probe identical to the original question;
+  an over-nested `LAYA_SHA256_DIGESTS` is a configuration error.
+- **Faster:** calibration fitting is vectorized, and routing skips hook dispatch when no hook
+  implements `on_route`.
+- The server logs one warning per request when a state was truncated.
+- Docs and tests: one evergreen `docs/UPSTREAM.md` replaces the per-version migration records;
+  local tests that duplicated the pinned upstream suites were removed.
+- Validation: 63/63 fixtures for all three checkpoints in FP32 and FP16 against the v0.4.34
+  reference, 100 stable calls each. Performance figures were not re-measured for this release.
+
 ## 0.6.0 — 2026-10-29
 
-Follows upstream **v0.4.17** (`fe9a6c35`). [Migration record](docs/MIGRATION_0_4_17.md).
+Follows upstream **v0.4.17** (`fe9a6c35`).
 
 - **Language routing:** `detect_language(..., explain=True)` reports why a language was chosen;
   updated Unicode script lookup and English/Vietnamese detection fixes.
@@ -26,8 +53,7 @@ Follows upstream **v0.4.17** (`fe9a6c35`). [Migration record](docs/MIGRATION_0_4
 
 ## 0.5.0 — 2026-10-20
 
-Follows upstream **v0.4.12** (`ffc14201`). [Release notes](docs/RELEASE_0_5_0.md) ·
-[migration](docs/MIGRATION_0_4.md) · [qualification](docs/QUALIFICATION_0_4_12.md).
+Follows upstream **v0.4.12** (`ffc14201`). [Qualification](docs/QUALIFICATION_0_4_12.md).
 
 - Batch and long-text inference, structured decisions, hooks, calibration, evaluation, HTTP/MCP
   serving and LangChain/LlamaIndex/CrewAI/Agno integrations.

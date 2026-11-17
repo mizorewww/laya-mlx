@@ -8,6 +8,24 @@ import math
 from typing import Any, Dict, List, Optional
 
 
+def _finite(value: Any) -> bool:
+    """Whether `value` is a real number that `float()` can read -- the test every check here means.
+
+    `math.isfinite` is written for a `float`, and a Python `int` may be wider than one: JSON's
+    grammar has no double limit, so a 400-digit confidence arrives as an `int` and `math.isfinite`
+    raises `OverflowError: int too large to convert to float` instead of answering "not finite".
+    `laya/_eval_policy.py::_finite_number` answers it this way already, and this module reads the
+    same exception as "does not read as a number" in `jev_confidence`. A `bool` is refused here so
+    no caller below has to repeat it.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
 def answer_confidence_value(answer: Dict[str, Any]) -> Optional[float]:
     """The `answer_confidence` of `answer`, or None if it did not report a usable one.
 
@@ -31,7 +49,7 @@ def answer_confidence_value(answer: Dict[str, Any]) -> Optional[float]:
     A `bool` is not a confidence and a NaN is not a decision, so both give None rather than 0.0.
     """
     conf = answer.get("answer_confidence")
-    if isinstance(conf, (int, float)) and not isinstance(conf, bool) and math.isfinite(conf):
+    if _finite(conf):
         return float(conf)
     return None
 
@@ -79,6 +97,12 @@ def jev_confidence(answer: Dict[str, Any]) -> Optional[float]:
     if n == 1:
         return 1.0
     total = sum(p)
+    if not math.isfinite(total):
+        # Individually finite weights can still overflow when added. A common scale cancels
+        # in the normalization, and scaling by the maximum keeps every addend at most 1.
+        scale = max(p)
+        p = [v / scale for v in p]
+        total = sum(p)
     p = [v / total for v in p] if total else [1.0 / n] * n
     if kind == "choice":
         return (max(p) - 1.0 / n) / (1.0 - 1.0 / n)
@@ -106,23 +130,13 @@ def _gate_confidence(answer: Dict[str, Any]) -> Optional[float]:
     if conf is not None:
         return conf
     fallback = answer.get("confidence")
-    if (
-        isinstance(fallback, (int, float))
-        and not isinstance(fallback, bool)
-        and math.isfinite(fallback)
-    ):
+    if _finite(fallback):
         return float(fallback)
     return None
 
 
 def _check_one_threshold(v: Any) -> float:
-    if (
-        isinstance(v, bool)
-        or not isinstance(v, (int, float))
-        or not math.isfinite(v)
-        or v < 0.0
-        or v > 1.0
-    ):
+    if not _finite(v) or v < 0.0 or v > 1.0:
         raise ValueError("min_confidence must be a float in [0.0, 1.0], got %r" % (v,))
     return float(v)
 

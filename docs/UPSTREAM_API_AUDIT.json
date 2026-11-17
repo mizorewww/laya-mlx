@@ -1,5 +1,5 @@
 {
-  "upstream_revision": "ffc142012af63d015fa19f05f29f9c5ff329a2cc",
+  "upstream_revision": "80a1da1fa5448ea12163f4d977935625a0aea670",
   "package": "laya_mlx",
   "scope": "public functions, explicitly defined public class methods, inherited Agent host methods and root __all__; annotations use native tensor types where needed",
   "rows": [
@@ -16,7 +16,7 @@
     {
       "module": "_compile.py",
       "status": "backend_specific_module",
-      "reason": "PyTorch training, execution backend, compiler or ONNX implementation; native runtime retained"
+      "reason": "PyTorch training, execution backend, compiler, ONNX or vegaml implementation; native runtime retained"
     },
     {
       "module": "_eval_policy.py",
@@ -151,27 +151,27 @@
     {
       "module": "backends/__init__.py",
       "status": "backend_specific_module",
-      "reason": "PyTorch training, execution backend, compiler or ONNX implementation; native runtime retained"
+      "reason": "PyTorch training, execution backend, compiler, ONNX or vegaml implementation; native runtime retained"
     },
     {
       "module": "backends/base.py",
       "status": "backend_specific_module",
-      "reason": "PyTorch training, execution backend, compiler or ONNX implementation; native runtime retained"
+      "reason": "PyTorch training, execution backend, compiler, ONNX or vegaml implementation; native runtime retained"
     },
     {
       "module": "backends/compile.py",
       "status": "backend_specific_module",
-      "reason": "PyTorch training, execution backend, compiler or ONNX implementation; native runtime retained"
+      "reason": "PyTorch training, execution backend, compiler, ONNX or vegaml implementation; native runtime retained"
     },
     {
       "module": "backends/eager.py",
       "status": "backend_specific_module",
-      "reason": "PyTorch training, execution backend, compiler or ONNX implementation; native runtime retained"
+      "reason": "PyTorch training, execution backend, compiler, ONNX or vegaml implementation; native runtime retained"
     },
     {
       "module": "backends/tilelang.py",
       "status": "backend_specific_module",
-      "reason": "PyTorch training, execution backend, compiler or ONNX implementation; native runtime retained"
+      "reason": "PyTorch training, execution backend, compiler, ONNX or vegaml implementation; native runtime retained"
     },
     {
       "module": "calibrate.py",
@@ -265,6 +265,11 @@
     },
     {
       "module": "cli.py",
+      "callable": "media_override",
+      "status": "signature_matches"
+    },
+    {
+      "module": "cli.py",
       "callable": "run",
       "status": "signature_matches"
     },
@@ -343,6 +348,11 @@
     {
       "module": "common.py",
       "callable": "window_budget",
+      "status": "signature_matches"
+    },
+    {
+      "module": "common.py",
+      "callable": "check_batch_size",
       "status": "signature_matches"
     },
     {
@@ -697,7 +707,7 @@
     {
       "module": "fast.py",
       "status": "backend_specific_module",
-      "reason": "PyTorch training, execution backend, compiler or ONNX implementation; native runtime retained"
+      "reason": "PyTorch training, execution backend, compiler, ONNX or vegaml implementation; native runtime retained"
     },
     {
       "module": "hooks.py",
@@ -947,6 +957,26 @@
     {
       "module": "integrations/_guard.py",
       "callable": "score_violation_probability",
+      "status": "signature_matches"
+    },
+    {
+      "module": "integrations/_guard.py",
+      "callable": "malformed",
+      "status": "signature_matches"
+    },
+    {
+      "module": "integrations/_guard.py",
+      "callable": "answers_map",
+      "status": "signature_matches"
+    },
+    {
+      "module": "integrations/_guard.py",
+      "callable": "answer_number",
+      "status": "signature_matches"
+    },
+    {
+      "module": "integrations/_guard.py",
+      "callable": "probability_map",
       "status": "signature_matches"
     },
     {
@@ -1477,7 +1507,12 @@
     {
       "module": "onnx_agent.py",
       "status": "backend_specific_module",
-      "reason": "PyTorch training, execution backend, compiler or ONNX implementation; native runtime retained"
+      "reason": "PyTorch training, execution backend, compiler, ONNX or vegaml implementation; native runtime retained"
+    },
+    {
+      "module": "policy.py",
+      "status": "backend_specific_module",
+      "reason": "PyTorch training, execution backend, compiler, ONNX or vegaml implementation; native runtime retained"
     },
     {
       "module": "presets.py",
@@ -1570,6 +1605,11 @@
         ]
       },
       "changed": {}
+    },
+    {
+      "module": "router.py",
+      "callable": "Router.vega_enabled",
+      "status": "signature_matches"
     },
     {
       "module": "router.py",
@@ -1734,20 +1774,33 @@
     {
       "module": "tl_kernels.py",
       "status": "backend_specific_module",
-      "reason": "PyTorch training, execution backend, compiler or ONNX implementation; native runtime retained"
+      "reason": "PyTorch training, execution backend, compiler, ONNX or vegaml implementation; native runtime retained"
     },
     {
       "module": "train.py",
       "status": "backend_specific_module",
-      "reason": "PyTorch training, execution backend, compiler or ONNX implementation; native runtime retained"
+      "reason": "PyTorch training, execution backend, compiler, ONNX or vegaml implementation; native runtime retained"
     },
     {
       "module": "train_cli.py",
       "status": "backend_specific_module",
-      "reason": "PyTorch training, execution backend, compiler or ONNX implementation; native runtime retained"
+      "reason": "PyTorch training, execution backend, compiler, ONNX or vegaml implementation; native runtime retained"
+    },
+    {
+      "module": "vega.py",
+      "status": "backend_specific_module",
+      "reason": "PyTorch training, execution backend, compiler, ONNX or vegaml implementation; native runtime retained"
+    },
+    {
+      "module": "video.py",
+      "status": "backend_specific_module",
+      "reason": "PyTorch training, execution backend, compiler, ONNX or vegaml implementation; native runtime retained"
     }
   ],
   "missing_root_exports": [],
+  "backend_specific_root_exports": [
+    "VegaAgent"
+  ],
   "failures": [],
   "passed": true
 }

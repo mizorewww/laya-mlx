@@ -1,27 +1,15 @@
-"""Native MLX HTTP server contracts and replacements for Torch-specific upstream serve checks."""
+"""Native replacements for the four upstream serve tests excluded as Torch-specific.
 
-import inspect
+The rest of upstream's tests/test_serve.py runs unchanged through test_official_host.py.
+"""
+
 from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 
-from laya_mlx.common import serialize_state
 from laya_mlx.mcp.tools import laya_status
-from laya_mlx.router import Router
-from laya_mlx.serve import (
-    _LONE_SURROGATE_DETAIL,
-    BATCH_BODY_CALL_CONTROLS,
-    BATCH_BODY_ITEM_CONTROLS,
-    BATCH_BODY_OUT_PARAMETERS,
-    BODY_CONTROLS,
-    BODY_REFUSALS,
-    LIVENESS_ONLY,
-    _apply_thread_limit,
-    _state_length,
-    build_router,
-    create_app,
-)
+from laya_mlx.serve import _apply_thread_limit, build_router, create_app
 
 
 class _EmptyRouter:
@@ -37,26 +25,17 @@ class _DeviceRouter:
         self._agents = {name: SimpleNamespace(device=dev) for name, dev in devices.items()}
 
 
-@pytest.mark.parametrize(
-    "raw,expected",
-    [
-        ("gpu", "gpu"),
-        ("mps", "mps"),
-        ("metal", "metal"),
-        ("cpu", "cpu"),
-    ],
-)
-def test_health_without_a_resident_checkpoint_flags_the_preference(monkeypatch, raw, expected):
+@pytest.mark.parametrize("raw", ["gpu", "mps", "metal", "cpu"])
+def test_health_without_a_resident_checkpoint_flags_the_preference(monkeypatch, raw):
     monkeypatch.setenv("LAYA_DEVICE", raw)
     monkeypatch.delenv("LAYA_API_KEY", raising=False)
     body = TestClient(create_app(router=_EmptyRouter())).get("/health").json()
     assert body["device_is_preference"] is True, body
     assert body["checkpoint_devices"] == {}, body
-    assert body["device"] == expected, body
+    assert body["device"] == raw, body
 
 
 def test_health_agrees_with_the_mcp_status_tool(monkeypatch):
-    """One fact about the native MLX device, reported the same way by both surfaces."""
     monkeypatch.setenv("LAYA_DEVICE", "gpu")
     monkeypatch.delenv("LAYA_API_KEY", raising=False)
     fake = _DeviceRouter(english="cpu")
@@ -68,7 +47,7 @@ def test_health_agrees_with_the_mcp_status_tool(monkeypatch):
 
 
 def test_build_router_strips_and_validates_mlx_device_preferences(monkeypatch):
-    """Whitespace/newlines from .env or Dockerfiles are stripped; CUDA strings are refused."""
+    """Whitespace from .env or Dockerfiles is stripped; CUDA strings are refused."""
     import laya_mlx.router
 
     seen = {}
@@ -88,7 +67,6 @@ def test_build_router_strips_and_validates_mlx_device_preferences(monkeypatch):
         (" GPU\n", "gpu"),
         ("Metal ", "metal"),
         ("   ", None),
-        ("cpu", "cpu"),
     ):
         monkeypatch.setenv("LAYA_DEVICE", raw)
         build_router()
@@ -111,62 +89,3 @@ def test_thread_limit_refuses_mlx_thread_override(monkeypatch):
     monkeypatch.setenv("LAYA_THREADS", "8")
     with pytest.raises(ValueError, match="LAYA_THREADS cannot control MLX thread pools"):
         _apply_thread_limit()
-
-
-def test_body_controls_and_refusals_partition_router_predict_signature():
-    params = [
-        name
-        for name in inspect.signature(Router.predict).parameters
-        if name not in ("self", "state", "questions")
-    ]
-    assert set(params) == set(BODY_CONTROLS) | set(BODY_REFUSALS)
-    assert set(BODY_CONTROLS).isdisjoint(BODY_REFUSALS)
-
-
-def test_batch_body_controls_partition_router_predict_batch_signature():
-    params = [
-        name
-        for name in inspect.signature(Router.predict_batch).parameters
-        if name not in ("self", "requests")
-    ]
-    assert set(params) == (
-        set(BATCH_BODY_CALL_CONTROLS) | set(BATCH_BODY_OUT_PARAMETERS) | set(BODY_REFUSALS)
-    )
-    assert set(BATCH_BODY_ITEM_CONTROLS) <= set(BODY_CONTROLS)
-
-
-@pytest.mark.parametrize(
-    "state",
-    [
-        "plain string",
-        {"body": 'quote " and unicode \u200b'},
-        ["turn 1", {"nested": [1, True, None]}],
-    ],
-)
-def test_state_length_matches_serialize_state(state):
-    assert _state_length(state) == len(serialize_state(state))
-
-
-def test_lone_surrogate_rejected_on_single_and_batch_routes(monkeypatch):
-    monkeypatch.delenv("LAYA_API_KEY", raising=False)
-    client = TestClient(create_app(router=_EmptyRouter()))
-    single_raw = b'{"state": "\\ud800", "questions": {"q": {"type": "noul", "instructions": "?"}}}'
-    batch_raw = (
-        b'{"states": ["\\ud800"], "questions": {"q": {"type": "noul", "instructions": "?"}}}'
-    )
-    for route, payload in (("/v1/systemone", single_raw), ("/v1/systemone/batch", batch_raw)):
-        resp = client.post(route, content=payload, headers={"content-type": "application/json"})
-        assert resp.status_code == 400
-        assert resp.json()["detail"] == _LONE_SURROGATE_DETAIL
-
-
-def test_health_liveness_only_when_api_key_set(monkeypatch):
-    monkeypatch.setenv("LAYA_API_KEY", "secret-token")
-    fake = _DeviceRouter(english="gpu")
-    client = TestClient(create_app(router=fake))
-    unauth = client.get("/health")
-    assert unauth.status_code == 200
-    assert unauth.json() == LIVENESS_ONLY
-    auth = client.get("/health", headers={"Authorization": "Bearer secret-token"})
-    assert auth.status_code == 200
-    assert auth.json()["checkpoint_devices"] == {"english": "gpu"}

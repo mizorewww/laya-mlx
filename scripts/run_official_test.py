@@ -4,7 +4,7 @@ Python imports and mock target module paths are rewritten. Router tests stub
 Agent construction; dispatch that stub through the MLX load factory as well.
 Host assertions, expected values and public model names are not rewritten.
 Backend-only exclusions and the native MCP fixture translation are explicit below;
-see docs/MIGRATION_0_4_17.md for the complete scope.
+see docs/UPSTREAM.md for the complete scope.
 """
 
 import ast
@@ -45,6 +45,9 @@ class Namespace(ast.NodeTransformer):
             # This is a removal pattern for the original example's import;
             # rewriting it would stop the test's StubLaya from taking effect.
             if node.value == "\nimport laya\n":
+                return node
+            # The server logs under upstream's logger name; it is not a module path to rewrite.
+            if node.value == "laya.serve":
                 return node
             if "import laya" in node.value or "from laya" in node.value:
                 node.value = re.sub(r"\bfrom laya(?=\b|\.)", "from laya_mlx", node.value)
@@ -134,12 +137,12 @@ def main():
             @staticmethod
             def references(node):
                 return any(
-                    isinstance(n, ast.Name) and n.id in {"ONNXAgent", "_ApiONNXAgent"}
+                    isinstance(n, ast.Name) and n.id in {"ONNXAgent", "_ApiONNXAgent", "VegaAgent"}
                     for n in ast.walk(node)
                 )
 
             def visit_ImportFrom(self, node):
-                return None if node.module == "laya.onnx_agent" else node
+                return None if node.module in {"laya.onnx_agent", "laya.vega"} else node
 
             def visit_Tuple(self, node):
                 node.elts = [e for e in node.elts if not self.references(e)]
@@ -187,7 +190,22 @@ def main():
             "test_thread_limit",
         },
         "test_mcp": {"test_device"},
+        # These two build or import upstream's own vegaml engine; the lane's routing,
+        # refusals and attached-agent behavior in the same files all still run.
+        "test_router_vega": {
+            "test_auto_turns_the_lane_on_when_vegaml_is_present_without_importing_it"
+        },
+        "test_langchain_native_policy": {
+            "test_vega_policy_survives_the_adapter_without_model_weights"
+        },
     }.get(path.stem, set())
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef):
+            node.body = [
+                m
+                for m in node.body
+                if not (isinstance(m, ast.FunctionDef) and m.name in backend_tests)
+            ]
     tree.body = [
         node
         for node in tree.body
@@ -197,6 +215,13 @@ def main():
             and isinstance(node.value, ast.Call)
             and isinstance(node.value.func, ast.Name)
             and node.value.func.id in backend_tests
+        )
+        # A file that hands itself to pytest would collect upstream's own package from its
+        # original path; the transformed tree is collected by pytest at the end instead.
+        and not (
+            isinstance(node, ast.If)
+            and "__main__" in ast.unparse(node.test)
+            and "pytest.main" in ast.unparse(node)
         )
     ]
     if path.stem == "test_cli":

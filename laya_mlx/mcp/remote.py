@@ -222,7 +222,18 @@ class RemoteRouter(Router):
         max_len: Optional[int] = None,
         head_max_len: Optional[int] = None,
         min_confidence: Optional[float] = None,
+        image: Any = None,
+        audio: Any = None,
+        video: Any = None,
     ) -> Dict[str, Any]:
+        if any(value is not None for value in (image, audio, video)):
+            # `Router.predict` takes these since 0.4.25 for the vega lane; laya-serve has no media
+            # encoding, so the remote says so here rather than sending a file name as a state
+            raise RemoteError(
+                "unsupported_remote",
+                "images, recordings and clips cannot be sent to laya-serve; use "
+                "laya.Agent(vegaml=True) or a local Router with the vega lane",
+            )
         if hooks_timeout is not None:
             raise RemoteError("unsupported_remote", "hooks_timeout belongs to the server's hooks")
         if any(

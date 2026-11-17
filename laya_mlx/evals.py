@@ -294,7 +294,11 @@ class Dataset:
         # *is* a `ValueError`, so the wider class would re-wrap the row errors named just below.
         examples: List[Example] = []
         try:
-            with open(path, "r", encoding="utf-8") as handle:
+            # `utf-8-sig`, not `utf-8`: a dataset exported from Excel or saved by Notepad starts
+            # with a BOM, and a plain `utf-8` read leaves it as U+FEFF on line 1, so `json` refuses a
+            # file that is valid JSON -- and says so with its own "decode using utf-8-sig" hint.
+            # `laya/cli.py`, `laya/train.py` and `laya/evidence.py` open a caller's file this way.
+            with open(path, "r", encoding="utf-8-sig") as handle:
                 for lineno, line in enumerate(handle, 1):
                     line = line.strip()
                     if not line or line.startswith("#"):

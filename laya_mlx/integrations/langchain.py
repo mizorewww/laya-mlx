@@ -40,6 +40,9 @@ from ._controls import reject_remote_hooks as _reject_remote_hooks
 from ._controls import reject_remote_lang_guess as _reject_remote_lang_guess
 from ._controls import require_router_controls as _require_router_controls
 from ._controls import router_kwargs as _router_kwargs
+from ._guard import answer_number as _answer_number
+from ._guard import answers_map as _answers_map
+from ._guard import malformed as _malformed
 from ._guard import score_violation_probability as _score_violation_probability
 
 
@@ -472,13 +475,14 @@ class LayaRouter(_BatchedRunnable, RunnableSerializable):
     """Zero-latency LangGraph conditional edge and LangChain LCEL routing runnable.
 
     Evaluates user input against typed criteria in ~33 ms without token generation.
-    Supports confidence threshold gating and fallback routing, and answers a list of
-    inputs in one shared forward pass through `batch`.
+    Supports confidence threshold gating or an opt-in native auto/review policy,
+    and answers a list of inputs in one shared forward pass through `batch`.
     """
 
     criteria: Dict[str, str]
     instructions: str = "Which route should handle this request?"
     confidence_threshold: float = 0.0
+    decision_policy: str = "confidence"
     fallback: Optional[str] = None
     state_key: Optional[Union[str, Callable[[Any], Any]]] = None
     agent: Optional[Any] = None
@@ -525,6 +529,8 @@ class LayaRouter(_BatchedRunnable, RunnableSerializable):
         on_predict_end: Optional[Any] = None,
         hooks_raise: Optional[bool] = None,
         hooks_timeout: Optional[float] = None,
+        *,
+        decision_policy: str = "confidence",
         **kwargs: Any,
     ):
         if _RUNNABLE_AVAILABLE:
@@ -532,6 +538,7 @@ class LayaRouter(_BatchedRunnable, RunnableSerializable):
                 criteria=criteria,
                 instructions=instructions,
                 confidence_threshold=confidence_threshold,
+                decision_policy=decision_policy,
                 fallback=fallback,
                 state_key=state_key,
                 agent=agent,
@@ -555,6 +562,7 @@ class LayaRouter(_BatchedRunnable, RunnableSerializable):
             self.criteria = criteria
             self.instructions = instructions
             self.confidence_threshold = confidence_threshold
+            self.decision_policy = decision_policy
             self.fallback = fallback
             self.state_key = state_key
             self.agent = agent
@@ -574,8 +582,23 @@ class LayaRouter(_BatchedRunnable, RunnableSerializable):
             self.hooks_timeout = hooks_timeout
         self.question_id = "route"
         self.last_decision: Optional[Dict[str, Any]] = None
+        self._validate_decision_policy()
+
+    def _validate_decision_policy(self) -> None:
+        if self.decision_policy not in ("confidence", "native"):
+            raise ValueError("decision_policy must be 'confidence' or 'native'")
+        if self.decision_policy == "native":
+            if not isinstance(self.fallback, str) or not self.fallback.strip():
+                raise ValueError("native decision_policy requires a non-empty fallback")
+            if self.confidence_threshold != 0.0:
+                raise ValueError(
+                    "native decision_policy requires confidence_threshold=0; "
+                    "configure the backend's min_confidence instead"
+                )
 
     def _questions(self) -> Dict[str, Any]:
+        # Fields are mutable (including via Pydantic copies); refuse invalid policy before inference.
+        self._validate_decision_policy()
         return {
             self.question_id: {
                 "type": "choice",
@@ -586,6 +609,24 @@ class LayaRouter(_BatchedRunnable, RunnableSerializable):
 
     def _finish(self, result: Dict[str, Any], input: Any) -> str:
         self.last_decision = result
+        self._validate_decision_policy()
+        if self.decision_policy == "native":
+            ans = _answers_map(result, "LayaRouter").get(self.question_id)
+            if ans is None:
+                raise _malformed("LayaRouter", "missing answer for %r" % self.question_id)
+            route = ans.get("route")
+            # Review need not carry a usable business choice. The backend has already
+            # combined its signals; do not reconstruct them or consult shared last_decision.
+            if route == "review":
+                return self.fallback
+            if route != "auto":
+                raise _malformed("LayaRouter", "native route must be 'auto' or 'review'")
+            choice = ans.get("choice")
+            if not isinstance(choice, str) or choice not in self.criteria:
+                raise _malformed(
+                    "LayaRouter", "native auto choice must name a configured criterion"
+                )
+            return choice
         ans = result["answers"][self.question_id]
         choice = ans["choice"]
         # Gate on the same number core's `flag_low_confidence` gates on: `answer_confidence`
@@ -753,16 +794,26 @@ class LayaGuardrail(_BatchedRunnable, RunnableSerializable):
 
     def _finish(self, result: Dict[str, Any], input: Any) -> Any:
         """Apply the violation scan and the configured action to one decision."""
-        answers = result.get("answers", {})
+        # A remote body is arbitrary JSON, so `answers` and each answer are checked before anything
+        # is read out of them -- the same two levels and the same `noul` check `LayaTaskGuard.screen`
+        # and `LayaAgentRouter.screen` already delegate to `_guard`. `result.get("answers", {})` only
+        # defaults when the key is ABSENT: a body whose answer is a string (`{"jailbreak": "nope"}`)
+        # raised AttributeError at `ans.get("type")`, a `noul` of `"high"` or `null` raised TypeError
+        # from `>=`, and a `{"type": "noul"}` with no `noul` at all raised KeyError at `ans["noul"]`
+        # whenever the threshold let the comparison through.
+        where = f"Laya server at {self.base_url}" if self.base_url else "Laya"
+        answers = _answers_map(result, where)
 
         violations: Dict[str, Any] = {}
         for qid, ans in answers.items():
             t = ans.get("type")
-            if t == "noul" and ans.get("noul", 0.0) >= self.threshold:
-                violations[qid] = {
-                    "probability": ans["noul"],
-                    "confidence": ans.get("confidence", 0.0),
-                }
+            if t == "noul":
+                probability = _answer_number(ans, "noul", where)
+                if probability >= self.threshold:
+                    violations[qid] = {
+                        "probability": probability,
+                        "confidence": ans.get("confidence", 0.0),
+                    }
             elif t == "score":
                 # `score` is the expected level (0..k-1), not a probability: gate on the
                 # probability that the level is at or above the middle of the scale.
@@ -934,15 +985,25 @@ class LayaTriage(_BatchedRunnable, RunnableSerializable):
 
     def _finish(self, result: Dict[str, Any], state: Any) -> Dict[str, Any]:
         """Project one triage decision onto the graph state."""
-        ans = result.get("answers", {})
+        # Three levels of the same body are read here, and only the first was checked: `answers`
+        # itself (a list raised AttributeError at `.get`), the answer under each question id (a
+        # string raised AttributeError at the nested `.get`), and the `noul` inside it (a `"0.9"` or
+        # `null` raised TypeError from `>=`, a `true` read as 1.0 because bool subclasses int, and a
+        # NaN compared False -- i.e. silently "not urgent"). `_answers_map` validates the first two
+        # and `_answer_number` the third, the way the guardrail screens two lines above do.
+        where = f"Laya server at {self.base_url}" if self.base_url else "Laya"
+        ans = _answers_map(result, where)
+
+        def _noul(qid: str) -> float:
+            return _answer_number(ans.get(qid, {}), "noul", where)
 
         triage_info = {
             "intent": ans.get("intent", {}).get("choice"),
             "intent_confidence": ans.get("intent", {}).get("confidence"),
-            "is_urgent": ans.get("is_urgent", {}).get("noul", 0.0) >= 0.5,
+            "is_urgent": _noul("is_urgent") >= 0.5,
             "frustration_score": ans.get("frustration", {}).get("score"),
-            "churn_risk": ans.get("churn_risk", {}).get("noul", 0.0) >= 0.5,
-            "refund_requested": ans.get("refund_requested", {}).get("noul", 0.0) >= 0.5,
+            "churn_risk": _noul("churn_risk") >= 0.5,
+            "refund_requested": _noul("refund_requested") >= 0.5,
         }
 
         if isinstance(state, dict):

@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "laya-mlx"
-version = "0.6.0"
+version = "0.7.0"
 description = "Native MLX inference for Laya typed decision models on Apple silicon"
 keywords = ["mlx", "laya", "typed-decisions", "decision-model", "local-ai", "apple-silicon"]
 classifiers = [

@@ -1,0 +1,98 @@
+name: Upstream port
+
+# Renovate opens renovate/upstream-laya when NandhaKishorM/laya tags a release
+# (see renovate.json). This job ports that release with Claude Code and pushes
+# the result to the same branch, so CI runs on it and a human merges and tags.
+
+on:
+  pull_request:
+    types: [opened, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: write
+
+concurrency:
+  group: upstream-port
+  cancel-in-progress: false
+
+env:
+  BRANCH: renovate/upstream-laya
+
+jobs:
+  port:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.head.ref == 'renovate/upstream-laya' &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       github.event.pull_request.user.login == 'renovate[bot]')
+    runs-on: macos-26
+    timeout-minutes: 300
+    env:
+      LAYA_MLX_TEST_DEVICE: cpu
+      TOKENIZERS_PARALLELISM: "false"
+      USE_TF: "0"
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BRANCH }}
+          fetch-depth: 0
+      - name: Resolve upstream range
+        id: range
+        run: |
+          echo "start=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          pin() { sed -nE 's/^ +ref: ([0-9a-f]{40}) # (v[^ ]+)$/\1 \2/p' | head -1; }
+          read -r old_sha old_tag < <(git show origin/main:.github/workflows/ci.yml | pin)
+          read -r new_sha new_tag < <(pin < .github/workflows/ci.yml)
+          pr=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')
+          test -n "$pr" || { echo "No open PR for $BRANCH"; exit 1; }
+          {
+            echo "old_sha=$old_sha"; echo "old_tag=$old_tag"
+            echo "new_sha=$new_sha"; echo "new_tag=$new_tag"
+            echo "pr=$pr"
+          } >> "$GITHUB_OUTPUT"
+          echo "Porting $old_tag ($old_sha) -> $new_tag ($new_sha), PR #$pr"
+      - name: Clone upstream with history
+        run: |
+          git clone --quiet https://github.com/NandhaKishorM/laya .upstream
+          git -C .upstream checkout --quiet ${{ steps.range.outputs.new_sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+      - run: python -m pip install -e '.[dev,reference,demo,serve,mcp,structured,llamaindex]'
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # The Claude GitHub App does not act for Renovate; push with GITHUB_TOKEN.
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # The trigger is renovate[bot]; the branch lives in this repository.
+          allowed_bots: renovate
+          restrict_untrusted_prs: "false"
+          claude_args: >-
+            --model claude-opus-5-5
+            --max-turns 400
+            --allowedTools Bash,Read,Edit,Write,Glob,Grep,TodoWrite
+          prompt: |
+            Port upstream NandhaKishorM/laya ${{ steps.range.outputs.new_tag }} into this repository.
+
+            - Repository: ${{ github.repository }}, branch ${{ env.BRANCH }} (already checked out), pull request #${{ steps.range.outputs.pr }}.
+            - Current port: ${{ steps.range.outputs.old_tag }} (${{ steps.range.outputs.old_sha }}).
+            - Target: ${{ steps.range.outputs.new_tag }} (${{ steps.range.outputs.new_sha }}), cloned with full history in .upstream.
+            - The Python environment is installed; uv is on PATH.
+
+            Read .github/upstream-port.md and follow it exactly. In that file OLD/NEW stand for the commits
+            above and OLD_VERSION for the current port's version without the leading v.
+      # A push with GITHUB_TOKEN starts no workflow, so run CI on the port explicitly;
+      # upstream-release.yml acts when it passes.
+      - name: Run CI on the port
+        if: always()
+        run: |
+          git fetch -q origin "$BRANCH"
+          if [ "$(git rev-parse "origin/$BRANCH")" != "${{ steps.range.outputs.start }}" ]; then
+            gh workflow run ci.yml --ref "$BRANCH"
+          fi

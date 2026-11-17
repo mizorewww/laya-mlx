@@ -605,6 +605,19 @@ class LayaAgnoRouter:
         elif chosen_key in criteria:
             chosen_idx = list(criteria.keys()).index(chosen_key)
 
+        # `chosen_key` is remote JSON and `agents` is the caller's list, so a two-agent team can be
+        # told to route to `agent_9`: the parsed number indexes no agent and `agents[chosen_idx]`
+        # below raised a bare IndexError out of the routing decision, while `agent_-1` silently
+        # wrapped to the LAST agent. `criteria` is built from exactly these agents, so an index it
+        # does not name is a candidate that does not exist -- the same "unknown decision" that
+        # `tools.py:493` refuses by name rather than raising.
+        if not 0 <= chosen_idx < len(agents):
+            raise _malformed(
+                where,
+                "decision %r names agent %d, which is not in the %d-agent team"
+                % (chosen_key, chosen_idx, len(agents)),
+            )
+
         # Confidence gating (same logic as LayaCrewRouter).
         if self.confidence_threshold > 0.0 and conf < self.confidence_threshold:
             if self.fallback_agent_index is not None:

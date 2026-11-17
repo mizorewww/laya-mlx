@@ -1,4 +1,4 @@
-"""Official Laya v0.4.17 host semantics; native MLX collation is in agent.py."""
+"""Official Laya v0.4.34 host semantics; native MLX collation is in agent.py."""
 
 from __future__ import annotations
 
@@ -436,6 +436,36 @@ def window_budget(
     return size, step, room
 
 
+def check_batch_size(batch_size: Any) -> Optional[int]:
+    """Validate the per-call `batch_size` cap before the chunker has to spend it.
+
+    `batch_size` counts states per forward pass, and the batch loop uses it as a `range()` step.
+    A `float` -- what a JSON `2.0` parses to, and what `n / 2` yields -- reached `range()` and came
+    back as the interpreter's own `'float' object cannot be interpreted as an integer`; a `str` was
+    compared to zero first and leaked `'>' not supported between instances of 'str' and 'int'`;
+    `True` is an `int` to `range()`, so it silently capped every pass at one state and switched
+    `sort_by_length` off, because that knob's own gate is `1 < chunk`. `laya/shortlist.py`,
+    `laya/mcp/tools.py` and `laya/serve.py` already refuse these shapes; the two `predict_batch`
+    entry points and `window_batch_cap` did not, so a Python caller -- the documented route, and
+    the one with no schema in front of it -- met the raw `TypeError` instead of the named refusal.
+
+    `None`, `0` and a negative integer are **not** refused: they mean "no cap", the chunker uses
+    `len(states)` and `window_batch_cap` returns `None`. That is pinned, not incidental --
+    `laya-java/fixtures/window_plan.json`'s `batch_cap` grid replays `(None, 0, -1, 1, 8)` through
+    the Java, Go, C# and C++ ports, and those ports take a typed `int` whose zero and negative
+    values are their own "unset", so refusing here would move the oracle for every port while
+    helping no caller. Anything with `__index__` is accepted, a `numpy.int64` among them, for the
+    same reason `ece_score` in this module gives: a value `range()` can spend is a value worth
+    accepting. A `bool` is refused even though it is an `int`, because `True` is not a count that
+    anyone meant to pass.
+    """
+    if batch_size is None:
+        return None
+    if isinstance(batch_size, bool) or not isinstance(batch_size, Integral):
+        raise ValueError("batch_size must be an integer count of states, got %r" % (batch_size,))
+    return int(batch_size)
+
+
 def window_batch_cap(
     n_windows: int, window: int, config_budget: int, batch_size: Optional[int] = None
 ) -> Optional[int]:
@@ -453,8 +483,11 @@ def window_batch_cap(
     those would trade a real property for no real protection. So the cap only applies past
     `_WINDOW_BATCH_BLOWUP`x, and then bounds the pass at the count the un-capped budget would have
     produced: peak memory stays at parity with the behaviour before the cap, and the scan still reads
-    the whole document, just in more passes. An explicit `batch_size` is always honoured.
+    the whole document, just in more passes. An explicit `batch_size` is always honoured --
+    `check_batch_size` decides what counts as explicit, and a value it refuses is one no chunker
+    downstream could honour either.
     """
+    batch_size = check_batch_size(batch_size)
     if batch_size and batch_size > 0:
         return batch_size
     if window >= config_budget:
@@ -597,7 +630,15 @@ def clamp_temperature(t, lo: float = TEMP_MIN, hi: float = TEMP_MAX) -> float:
         return 1.0
     try:
         t = float(t)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
+        # `OverflowError` is a number this function cannot read, not a bug in the caller: JSON's
+        # grammar has no double limit, so a temperature written as a 401-digit integer literal
+        # parses as an `int` and `float()` refuses it. (`1e400` in the same file is fine -- JSON
+        # reads that as a float, which is `inf`, and the check below already answers 1.0 for it.)
+        # `confidence._finite`, `hooks.validate_timeout` and `calibrate.apply_calibration_payload`
+        # all read this exception as "does not read as a number" already; here it used to escape,
+        # and with it every `Agent`/`ONNXAgent`/`load_calibration` load that had read the
+        # checkpoint off disk by then.
         return 1.0
     if t != t or t in (float("inf"), float("-inf")):  # NaN / inf
         return 1.0
@@ -850,7 +891,11 @@ def temperature_rejected(raw, applied: float) -> bool:
         return True
     try:
         value = float(raw)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
+        # The same "does not read as a number" `clamp_temperature` answers with 1.0, so the entry
+        # is named rather than the loader raising while it builds the warning about it. A wide
+        # integer literal is that case: it has a neutral fallback to report, and the value that
+        # `float()` cannot hold is exactly the one a reader needs to see.
         return True
     return value != applied
 

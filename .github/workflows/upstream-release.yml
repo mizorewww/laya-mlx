@@ -1,0 +1,70 @@
+name: Upstream release
+
+# Merges and releases an upstream port once CI passes on it. The port job labels
+# the PR port-ready when its checks pass; this job requires that label, a green CI
+# run on the PR's current head, and a version bump against main.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [renovate/upstream-laya]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: upstream-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Check the port is ready
+        id: check
+        run: |
+          pr=$(gh pr list --head renovate/upstream-laya --state open --label port-ready \
+            --json number,headRefOid --jq ".[] | select(.headRefOid == \"$HEAD_SHA\") | .number")
+          if [ -z "$pr" ]; then
+            echo "No open port-ready PR at $HEAD_SHA; nothing to do."
+            exit 0
+          fi
+          version() { python3 -c 'import sys,tomllib; print(tomllib.loads(sys.stdin.read())["project"]["version"])'; }
+          new=$(git show "$HEAD_SHA:pyproject.toml" | version)
+          old=$(git show origin/main:pyproject.toml | version)
+          if [ "$new" = "$old" ] || git ls-remote --exit-code --tags origin "v$new" >/dev/null; then
+            echo "::error::Version $new is not a new release (main has $old)."
+            exit 1
+          fi
+          echo "pr=$pr" >> "$GITHUB_OUTPUT"
+          echo "version=$new" >> "$GITHUB_OUTPUT"
+      - name: Merge
+        if: steps.check.outputs.pr
+        run: |
+          gh pr merge ${{ steps.check.outputs.pr }} --squash --delete-branch \
+            --match-head-commit "$HEAD_SHA" \
+            --subject "$(git log -1 --format=%s "$HEAD_SHA") (#${{ steps.check.outputs.pr }})" \
+            --body "$(git log -1 --format=%b "$HEAD_SHA")"
+      - name: Tag and release
+        if: steps.check.outputs.pr
+        run: |
+          tag=v${{ steps.check.outputs.version }}
+          sha=$(gh pr view ${{ steps.check.outputs.pr }} --json mergeCommit --jq .mergeCommit.oid)
+          git tag "$tag" "$sha"
+          git push origin "$tag"
+          # A tag pushed with GITHUB_TOKEN starts no workflow; dispatch the release on it.
+          gh workflow run release.yml --ref "$tag"

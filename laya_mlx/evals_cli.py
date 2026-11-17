@@ -389,7 +389,12 @@ def _load_report(path: str) -> Dict[str, Any]:
     # distinction the exit codes exist to draw. `laya-evals agreement` has always read its three
     # runs this way; this makes the shared report loader satisfy the same contract.
     try:
-        with open(path, "r", encoding="utf-8") as handle:
+        # `utf-8-sig`, not `utf-8`: a report saved through a Windows editor or a spreadsheet export
+        # starts with a BOM, and a plain `utf-8` read leaves it as U+FEFF, so `json.load` refuses a
+        # document that is valid JSON -- with its own "decode using utf-8-sig" hint. `laya/cli.py`,
+        # `laya/train.py` and the dataset reader in `laya/evals.py` open a caller's file this way
+        # for the same reason.
+        with open(path, "r", encoding="utf-8-sig") as handle:
             document = json.load(handle)
     except (OSError, ValueError, RecursionError) as exc:
         raise EvalError("cannot read report %r: %s" % (path, exc)) from exc
@@ -719,7 +724,10 @@ def _cmd_agreement(args) -> int:
     runs = []
     for path in (args.reference, args.repeat, args.student):
         try:
-            with open(path, encoding="utf-8") as handle:
+            # `utf-8-sig` for the same reason as `_load_report` above: a run re-saved through an
+            # editor or a spreadsheet export starts with a BOM, which a plain `utf-8` read leaves as
+            # U+FEFF and `json` refuses -- naming an agreement run as unreadable when it is valid.
+            with open(path, encoding="utf-8-sig") as handle:
                 runs.append(json.load(handle, object_pairs_hook=unique_object))
         except (OSError, ValueError, RecursionError) as exc:
             raise EvalError("cannot read agreement run %r: %s" % (path, exc)) from exc

@@ -39,12 +39,15 @@ HOST_SUITES = (
     "blank_lang_routing",
     "router",
     "router_batch",
+    "router_vega",
     "criteria_normalization",
     "shortlist_cosine",
     "confidence",
     "crewai",
     "langchain",
+    "langchain_native_policy",
     "llamaindex",
+    "mcp_diagnostics",
     "_long_attribution",
 )
 

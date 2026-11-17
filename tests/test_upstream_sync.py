@@ -151,14 +151,6 @@ def test_incremental_and_empty_preload(monkeypatch):
     assert r.load("english") is first
 
 
-@pytest.mark.parametrize("lang", ["", " ", " en ", "en_US.UTF-8", "C.UTF-8", "und", "POSIX"])
-def test_language_hints(lang):
-    assert (
-        Router().route("Please refund the duplicate charge on my account.", lang=lang).model
-        == "english"
-    )
-
-
 def test_undecided_uses_default_and_nested_cjk_is_seen():
     assert Router(default="multilingual").route("qwerty blorp").model == "multilingual"
     assert (
@@ -187,16 +179,5 @@ def test_experimental_prefix_ablation_preserves_runtime_contract(state):
     assert PrefixPreparation(a)(state, Q) == a.prepare(state, Q)
 
 
-@pytest.mark.parametrize(
-    "text,want",
-    [
-        ("我的 iPhone 15 Pro Max 订单还没到", "multilingual"),
-        ("My name is 王小明 and my order is late", "english"),
-        ("Could you email me your résumé before the meeting", "english"),
-        ("trage diesen termin in meinen kalender ein", "multilingual"),
-        ("Kan inte logga in", "multilingual"),
-        ("Please check github.com and contact user@acme.com", "english"),
-    ],
-)
-def test_language_regressions(text, want):
-    assert Router().route(text).model == want
+def test_identifiers_do_not_count_as_non_english_evidence():
+    assert Router().route("Please check github.com and contact user@acme.com").model == "english"

@@ -1,0 +1,54 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard"
+  ],
+  "timezone": "Asia/Shanghai",
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Upstream Laya revision that CI checks out into .upstream",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/ci\\.yml$/"
+      ],
+      "matchStrings": [
+        "repository: NandhaKishorM/laya\\s+ref: (?<currentDigest>[0-9a-f]{40}) # (?<currentValue>v\\S+)"
+      ],
+      "depNameTemplate": "NandhaKishorM/laya",
+      "packageNameTemplate": "https://github.com/NandhaKishorM/laya",
+      "datasourceTemplate": "git-tags"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Everything except upstream: detect and list on the Dependency Dashboard, open a PR only when ticked there",
+      "matchPackageNames": [
+        "*",
+        "!NandhaKishorM/laya"
+      ],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Upstream releases: one PR on a fixed branch, which upstream-port.yml hands to Claude Code",
+      "matchPackageNames": [
+        "NandhaKishorM/laya"
+      ],
+      "branchTopic": "upstream-laya",
+      "additionalBranchPrefix": "",
+      "commitMessageTopic": "upstream Laya",
+      "labels": [
+        "upstream-sync"
+      ],
+      "automerge": false,
+      "separateMajorMinor": false,
+      "separateMinorPatch": false,
+      "schedule": [
+        "at any time"
+      ],
+      "prBodyNotes": [
+        "The **Upstream port** workflow ports this release with Claude Code and pushes the result to this branch. If every check passes it labels the PR `port-ready`, and **Upstream release** then merges it and publishes the new version once CI is green."
+      ]
+    }
+  ]
+}

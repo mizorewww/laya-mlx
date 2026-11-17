@@ -1,5 +1,8 @@
 """The public warmup uses official synthetic shapes through native transport."""
 
+import json
+import warnings
+
 import numpy as np
 import pytest
 
@@ -62,3 +65,27 @@ def test_native_backend_introspection_and_explicit_switch_boundary():
     for strict in (False, True):
         with pytest.raises(NotImplementedError, match="backend switching"):
             agent.set_backend("auto", strict=strict)
+
+
+def test_parallel_warmup_supplies_shared_positions_and_isolated_options():
+    agent, calls = make_agent()
+    agent.cfg["option_layout"] = "parallel"
+    agent.warmup([(2, 8, 3)])
+    batch = calls[0]
+    np.testing.assert_array_equal(batch["position_ids"], [[0, 1, 1, 1, 2, 3, 4, 5]] * 2)
+    np.testing.assert_array_equal(batch["option_ids"], [[0, 1, 2, 3, 0, 0, 0, 0]] * 2)
+
+
+@pytest.mark.parametrize("compiled", [False, True])
+def test_parallel_native_warmup(tiny_checkpoint, compiled):
+    from laya_mlx import Agent
+
+    path = tiny_checkpoint / "rl_agent_config.json"
+    cfg = json.loads(path.read_text())
+    cfg["option_layout"] = "parallel"
+    path.write_text(json.dumps(cfg))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        agent = Agent(tiny_checkpoint, compile=compiled, pad_to_multiple=16, batch_size=2)
+        assert agent.warmup() >= 0
+        assert agent.warmup([(2, 32, 3)]) >= 0

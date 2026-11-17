@@ -3,8 +3,7 @@
 This project follows upstream [Laya](https://github.com/NandhaKishorM/laya) behavior through a
 native MLX implementation. Upstream-compatible fixes take priority over new model variants,
 service APIs and demos. If a change has to differ from upstream, say why in the pull request,
-add a regression test, and record the divergence in the current migration document
-([MIGRATION_0_4_17.md](docs/MIGRATION_0_4_17.md)).
+add a regression test, and record the divergence in [docs/UPSTREAM.md](docs/UPSTREAM.md).
 
 ## Development setup
 
@@ -16,7 +15,7 @@ source .venv/bin/activate
 
 # Upstream reference used by parity and contract tests (the commit CI pins):
 gh repo clone NandhaKishorM/laya .upstream
-git -C .upstream checkout fe9a6c35023a7d94102e7feaaeaae8857d9d1b07
+git -C .upstream checkout 80a1da1fa5448ea12163f4d977935625a0aea670
 ```
 
 Model weights are downloaded separately and are never committed.
@@ -32,12 +31,13 @@ python scripts/audit_public_api.py --package laya_mlx                    # must 
 
 Unit tests use small random models, including direct comparisons with Transformers and the pinned
 upstream decision head. Upstream's timing-sensitive host contracts run in their own process, before
-the native tests; keep every upstream assertion and timeout unchanged. [CI_TIMING.md](docs/CI_TIMING.md)
-explains the known idle-window timing instability.
+the native tests; keep every upstream assertion and timeout unchanged.
+[UPSTREAM.md](docs/UPSTREAM.md#idle-window-timing) explains the known idle-window timing
+instability.
 
 On Linux, install `.[dev,serve,mcp,structured]` and run
-`pytest -q tests/test_official_host.py tests/test_upstream_0417.py`. These use real host code with
-stub inference and say nothing about MLX numerical parity.
+`pytest -q tests/test_official_host.py tests/test_upstream_0417.py tests/test_upstream_0434.py`.
+These use real host code with stub inference and say nothing about MLX numerical parity.
 
 GitHub Actions runs the host checks on Linux and small-model CPU tests on macOS arm64. Full-checkpoint
 GPU validation and benchmarks run locally only.
@@ -79,3 +79,20 @@ prepared folders the same way.
 The release workflow reruns CI, checks that the tag and all three versions agree, builds and
 `twine check`s the wheel and sdist, publishes to PyPI with the `PYPI_API_TOKEN` secret, and creates a
 GitHub release. Any failure stops the release before publishing.
+
+Upstream releases are ported and released without a maintainer. Renovate opens a PR on
+`renovate/upstream-laya` for each upstream tag, Claude Code ports it there following
+[.github/upstream-port.md](.github/upstream-port.md), and when every check passes and CI is green the
+PR is merged, tagged and released. Real-checkpoint validation and the wheel smoke test are not part
+of that path; run them afterwards.
+
+New issues get an automated first reply, and `@claude` in a comment asks Claude Code for more.
+Pull requests get an automated review. Claude only reads and decides; replies, closes, approvals,
+commits and merges are made under the maintainer's account with the `MAINTAINER_TOKEN` secret.
+A pull request from a contributor outside the repository is closed when it is not needed, and
+otherwise taken over without waiting for the author: conflicts with `main` resolved, redundant
+code and tests removed, problems fixed, committed as the maintainer with Claude as co-author, and
+squash-merged once CI passes. The changes go to the contributor's branch when "Allow edits by
+maintainers" is on, else to an `adopt/pr-<n>` pull request that closes the original when it
+merges. Pull requests that change `.github/` are never merged automatically, and collaborators'
+pull requests get a review only.

@@ -231,7 +231,13 @@ def _field(
             branch.update((k, v) for k, v in prop.items() if k != "allOf")
             return _field(path, name, branch, root, seen)
         union = prop.get("anyOf") or prop.get("oneOf")
-        if union is not None:
+        # The `allOf` branch above guards its wrapper's shape before iterating it; an `anyOf`/`oneOf`
+        # that is not an array (a JSON number, a boolean -- `bool` subclasses `int` and so is neither
+        # `None` nor iterable the way a list is) used to fall straight into the comprehension below
+        # and leak `TypeError: 'int' object is not iterable`. A non-array union is not a recognised
+        # optional wrapper, so it is left to the terminal "unsupported schema" rejection, which names
+        # the path exactly like the non-array `enum` case does.
+        if isinstance(union, list):
             branches = [b for b in union if isinstance(b, dict) and b.get("type") != "null"]
             if len(branches) != 1:
                 raise SchemaError(

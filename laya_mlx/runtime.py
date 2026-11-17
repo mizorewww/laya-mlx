@@ -1,4 +1,4 @@
-"""Host prediction methods ported from official Laya v0.4.17.
+"""Host prediction methods ported from official Laya v0.4.34.
 
 MLX adaptation is restricted to tensor execution and resource cleanup.
 """
@@ -30,10 +30,12 @@ from .common import (
     _reuse_question_tokens,
     answer_confidence,
     build_sequence,
+    check_batch_size,
     collapsed_options,
     collate_items,
     confidence_from_probs,
     encode_text,
+    parallel_layout,
     render_criterion,
     resolve_lang_temperatures,
     serialize_state,
@@ -638,7 +640,9 @@ class RuntimeMixin(HookRegistry):
                     The same `questions` are evaluated against every state.
             questions: Question definitions, exactly as accepted by `system_one`.
             batch_size: Optional cap on states per forward pass. `None` sends them all in one pass;
-                        set it to bound peak memory when batching many or long states.
+                        set it to bound peak memory when batching many or long states. A `float`,
+                        a `str` or a `bool` is refused by name -- the count is spent as a `range()`
+                        step, and `0` or a negative integer means the same "no cap" as `None`.
             hooks (HookArg): Per-call hooks, appended after any installed on the Agent.
                     See `laya.hooks`.
             on_predict_start (PredictHookArg): A per-call start hook. It may rewrite the
@@ -661,6 +665,7 @@ class RuntimeMixin(HookRegistry):
             aligned with `states` by index.
         """
         mc = check_min_confidence(min_confidence) if min_confidence is not None else None
+        batch_size = check_batch_size(batch_size)
         active = compose_hooks(self.hooks, hooks, on_predict_start, on_predict_end)
         raise_errors = self.hooks_raise if hooks_raise is None else bool(hooks_raise)
         timeout = self.hooks_timeout if hooks_timeout is None else validate_timeout(hooks_timeout)
@@ -1480,7 +1485,7 @@ class RuntimeMixin(HookRegistry):
         """Warm native forwards on upstream's synthetic shapes, without hooks.
 
         Return elapsed seconds. Tensor transport is native; the shape defaults,
-        token cap and fill values follow official v0.4.17 Agent.warmup.
+        token cap and fill values follow official Agent.warmup.
         Explicit calls propagate graph or compilation errors.
         """
         max_len = int(self.cfg.get("max_len", 512))
@@ -1488,15 +1493,19 @@ class RuntimeMixin(HookRegistry):
         started = time.perf_counter()
         for rows, tokens, markers in self.WARMUP_SHAPES if shapes is None else shapes:
             tokens = max(markers + 2, min(int(tokens), max_len))
-            self._forward(
-                {
-                    "input_ids": np.full((rows, tokens), fill, dtype=np.int64),
-                    "attention_mask": np.ones((rows, tokens), dtype=np.int64),
-                    "marker_pos": np.tile(np.arange(1, markers + 1), (rows, 1)),
-                    "marker_mask": np.ones((rows, markers), dtype=bool),
-                    "qtype": np.zeros(rows, dtype=np.int64),
-                }
-            )
+            batch = {
+                "input_ids": np.full((rows, tokens), fill, dtype=np.int64),
+                "attention_mask": np.ones((rows, tokens), dtype=np.int64),
+                "marker_pos": np.tile(np.arange(1, markers + 1), (rows, 1)),
+                "marker_mask": np.ones((rows, markers), dtype=bool),
+                "qtype": np.zeros(rows, dtype=np.int64),
+            }
+            if self.parallel_options:
+                # Each synthetic option occupies its marker token; the remaining
+                # tokens are shared context, as in ordinary parallel preparation.
+                layout = parallel_layout(list(range(1, markers + 1)), markers + 2, tokens)
+                batch.update({key: np.tile(value, (rows, 1)) for key, value in layout.items()})
+            self._forward(batch)
         return time.perf_counter() - started
 
     predict = system_one
