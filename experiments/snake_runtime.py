@@ -15,8 +15,6 @@ import numpy as np
 
 from laya_mlx.prepared import PrefixCache
 from laya_mlx.snake.game import SnakeGame
-from laya_mlx.snake.policy import LayaPolicy
-from laya_mlx.snake.replay import load_record
 
 
 class PrefixPreparation:
@@ -31,6 +29,9 @@ class PrefixPreparation:
 
 
 def main():
+    from laya_mlx.snake.policy import LayaPolicy
+    from laya_mlx.snake.replay import load_record
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", default="models/hub/laya-multilingual-mlx")
     parser.add_argument(
