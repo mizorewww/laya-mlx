@@ -35,6 +35,7 @@ from .common import (
     collate_items,
     confidence_from_probs,
     encode_text,
+    parallel_layout,
     render_criterion,
     resolve_lang_temperatures,
     serialize_state,
@@ -1492,15 +1493,19 @@ class RuntimeMixin(HookRegistry):
         started = time.perf_counter()
         for rows, tokens, markers in self.WARMUP_SHAPES if shapes is None else shapes:
             tokens = max(markers + 2, min(int(tokens), max_len))
-            self._forward(
-                {
-                    "input_ids": np.full((rows, tokens), fill, dtype=np.int64),
-                    "attention_mask": np.ones((rows, tokens), dtype=np.int64),
-                    "marker_pos": np.tile(np.arange(1, markers + 1), (rows, 1)),
-                    "marker_mask": np.ones((rows, markers), dtype=bool),
-                    "qtype": np.zeros(rows, dtype=np.int64),
-                }
-            )
+            batch = {
+                "input_ids": np.full((rows, tokens), fill, dtype=np.int64),
+                "attention_mask": np.ones((rows, tokens), dtype=np.int64),
+                "marker_pos": np.tile(np.arange(1, markers + 1), (rows, 1)),
+                "marker_mask": np.ones((rows, markers), dtype=bool),
+                "qtype": np.zeros(rows, dtype=np.int64),
+            }
+            if self.parallel_options:
+                # Each synthetic option occupies its marker token; the remaining
+                # tokens are shared context, as in ordinary parallel preparation.
+                layout = parallel_layout(list(range(1, markers + 1)), markers + 2, tokens)
+                batch.update({key: np.tile(value, (rows, 1)) for key, value in layout.items()})
+            self._forward(batch)
         return time.perf_counter() - started
 
     predict = system_one
