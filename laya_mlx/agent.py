@@ -10,10 +10,9 @@ from huggingface_hub import snapshot_download
 
 from .common import (
     QTYPES,
+    _state_token_ids,
     build_sequence,
-    encode_text,
     read_temperatures,
-    serialize_state,
     uses_parallel_layout,
 )
 from .prepared import PrefixCache
@@ -284,11 +283,7 @@ class Agent(RuntimeMixin):
         # re-serializing and re-tokenizing it inside build_sequence per question was pure
         # duplicated work. Tokenize in full and let build_sequence slice per question, so
         # left-truncation for conversation lists keeps its meaning.
-        state_ids = encode_text(
-            self.tok,
-            serialize_state(state).replace(self.tok.mask_token, " "),
-            add_special_tokens=False,
-        )["input_ids"]
+        state_ids = _state_token_ids(self.tok, state)
         items = []
         for qid in ids:
             q = internal[qid]

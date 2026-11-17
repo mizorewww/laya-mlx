@@ -152,15 +152,13 @@ def _definitions(path):
         "predict_long",
     ],
 )
-def test_changed_host_methods_match_pinned_upstream_ast(name):
+def test_changed_host_methods_match_pinned_upstream_ast(name, host_method_ast):
     source = ROOT / ".upstream/laya/agent.py"
     if not source.exists():
         pytest.skip("checkout pinned upstream into .upstream")
     original = _definitions(source)[name]
     native = _definitions(ROOT / "laya_mlx/runtime.py")[name]
-    assert ast.dump(native, include_attributes=False) == ast.dump(
-        original, include_attributes=False
-    )
+    assert host_method_ast(native) == host_method_ast(original)
 
 
 def _scan_agent():

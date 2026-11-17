@@ -19,7 +19,9 @@ evaluation, CLI, HTTP, MCP and the framework integrations) is upstream's host co
 - `backend` and `dtype_for()` report MLX. `set_backend()` raises; TileLang `accelerate()` returns
   `False` (raises with `strict=True`).
 - `embed_fn_from_agent` validates `tok`/`model.encoder` before importing MLX and keeps native mean
-  pooling.
+  pooling. Like [upstream's tokenizer call](https://github.com/NandhaKishorM/laya/blob/80a1da1fa5448ea12163f4d977935625a0aea670/laya/shortlist.py#L271-L278),
+  it truncates through the tokenizer, preserving special tokens. This corrects the MLX port's
+  former `encode(...).ids[:max_length]` slicing; a private copy keeps prediction settings unchanged.
 - The final decision-head layer keeps full QKV projections and attention, but computes its output
   projection and FFN only for CLS and option-marker positions, which are the outputs inference
   reads. This preserves the mathematical dependencies; changed projection shapes can affect
@@ -51,6 +53,8 @@ by its own regression tests.
 
 | Behavior | Upstream v0.4.34 | MLX | Tests |
 |---|---|---|---|
+| Long-text window tokens | Decodes and re-encodes each window, which can add tokens and truncate its tail | Window objects reuse their original tokens; plain strings returned by hooks are re-encoded. Attribution still follows upstream's text-equality check | `tests/test_window_embedding_integrity.py` |
+| Embedding cache invalidation | In-flight embeddings can repopulate a cleared cache | A generation counter prevents old calls from writing into the new cache | `tests/test_window_embedding_integrity.py` |
 | Parallel checkpoint warmup | Synthetic batches omit option layout tensors | Include shared position IDs and isolated option IDs so native parallel models can warm up, including automatic compiled warmup | `tests/test_warmup.py` |
 | `Router.predict_batch` grouping | Schemas serialized with `json.dumps`, so key `1` and `"1"` (or `True` and `"true"`) share a group and later requests receive the first request's key types | Grouping signature keeps Python key types and insertion order; equal schemas still share a batch | `tests/test_batch_key_types.py` |
 | Serial hook timeout (`hooks_concurrent=False`) | The caller releases the lock when a hook times out while the hook is still running, so later serial hooks can overlap it | The worker holds the lock until the hook exits; `hooks_timeout` includes the lock wait, and a hook whose deadline passes while waiting is never invoked | `tests/test_hook_serialization.py` |
@@ -98,6 +102,10 @@ else: assertions, expected values, public model names and timing thresholds are 
 for this pin are `router_vega`, `langchain_native_policy` and `mcp_diagnostics`.
 `tests/test_official_contract.py` adds AST equality for host methods, differential runs against
 upstream on identical inputs, and the native MCP suite.
+The AST checks normalize only the two token-preserving expressions in `_encode_state` and
+`predict_long`; the rest of both methods remains pinned. The MCP cache fixture translates the
+Torch tokenizer to the native interface, including cloning and truncation, with shared call
+records so all upstream cache assertions remain unchanged.
 
 Excluded as backend-specific:
 

@@ -42,14 +42,13 @@ def official():
         "load_calibration",
     ],
 )
-def test_host_methods_match_official_ast(official, name):
+def test_host_methods_match_official_ast(official, name, host_method_ast):
     import inspect
     import textwrap
 
     def tree(method):
-        node = ast.parse(textwrap.dedent(inspect.getsource(method)))
-        node.body[0].decorator_list = []
-        return ast.dump(node, include_attributes=False)
+        node = ast.parse(textwrap.dedent(inspect.getsource(method))).body[0]
+        return host_method_ast(node)
 
     assert tree(getattr(RuntimeMixin, name)) == tree(getattr(official, name))
 
