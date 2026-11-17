@@ -346,15 +346,15 @@ class Agent(RuntimeMixin):
         rows = len(batch["input_ids"])
         lengths = batch["attention_mask"].sum(axis=1)
         counts = batch["marker_mask"].sum(axis=1)
+        multiple = getattr(self, "pad_to_multiple", None)
+        limit = getattr(self, "encoder_cfg", {}).get(
+            "max_position_embeddings", self.cfg.get("max_len", 512)
+        )
         order = np.arange(rows)
         if rows > self.batch_size:
             candidate = np.argsort(lengths, kind="stable")
             padded_lengths = lengths
-            multiple = getattr(self, "pad_to_multiple", None)
             if multiple:
-                limit = getattr(self, "encoder_cfg", {}).get(
-                    "max_position_embeddings", self.cfg.get("max_len", 512)
-                )
                 padded_lengths = np.minimum(
                     ((lengths + multiple - 1) // multiple) * multiple, limit
                 )
@@ -387,10 +387,8 @@ class Agent(RuntimeMixin):
             arrays = collate_items(
                 items,
                 self.tok.pad_token_id,
-                pad_to_multiple=getattr(self, "pad_to_multiple", None),
-                max_length=getattr(self, "encoder_cfg", {}).get(
-                    "max_position_embeddings", self.cfg.get("max_len", 512)
-                ),
+                pad_to_multiple=multiple,
+                max_length=limit,
             )
             out, act = self.forward(arrays)
             out, act = np.asarray(out), np.asarray(act)

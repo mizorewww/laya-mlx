@@ -95,6 +95,8 @@ jobs:
           path: pr
           fetch-depth: 0
           persist-credentials: false
+          # Safe here: nothing from the pull request is executed (see the top).
+          allow-unsafe-pr-checkout: true
       # Keep the PR's git metadata out of the work tree, so the files Claude
       # proposes can never become git configuration or hooks.
       - run: mv pr/.git "$RUNNER_TEMP/pr.git"
