@@ -87,8 +87,9 @@ PR is merged, tagged and released. Real-checkpoint validation and the wheel smok
 of that path; run them afterwards.
 
 New issues get an automated first reply, and `@claude` in a comment asks Claude Code for more.
-Pull requests get an automated review. For contributors outside the repository, the reviewer may
-also close a pull request it finds of no value, or push fixes to one worth taking when "Allow
-edits by maintainers" is on, committed as the maintainer with Claude as co-author; CI then tests
-them on the pull request. When it judges a pull request ready, it approves with "LGTM". Merging
-stays with the maintainer.
+Pull requests get an automated review. Claude only reads and decides; the replies, reviews,
+closes, approvals and fix commits are posted under the maintainer's account with the
+`MAINTAINER_TOKEN` secret. For contributors outside the repository the reviewer may close a pull
+request it finds of no value, push fixes to one worth taking when "Allow edits by maintainers" is
+on (committed as the maintainer with Claude as co-author, then tested by CI), and approve with
+"LGTM". Merging stays with the maintainer.
