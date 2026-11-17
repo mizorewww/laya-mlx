@@ -3,8 +3,9 @@
 Claude only reads the pull request and returns a decision (see pr-review.yml).
 This script posts it with the maintainer's token: one review with inline
 comments, approved when Claude says LGTM, or a comment and close, and it commits
-and pushes the edits Claude proposed. The decision is untrusted input, so edits
-are applied as exact string replacements inside the PR checkout only.
+and pushes the edits Claude proposed. An approved pull request is merged once CI
+passes (merge_ready.py). The decision is untrusted input, so edits are applied
+as exact string replacements or deletions inside the PR checkout only.
 """
 
 import json
@@ -13,6 +14,8 @@ import subprocess
 import urllib.error
 import urllib.request
 from pathlib import Path
+
+from merge_ready import merge_if_ready
 
 REPO = os.environ["GITHUB_REPOSITORY"]
 PR = os.environ["PR"]
@@ -51,7 +54,10 @@ def git(*args):
 
 
 def planned_edits(edits):
-    """Return {path: new text} for all edits, or raise ValueError; nothing is written."""
+    """Return {path: new text, or None to delete} for all edits, or raise ValueError.
+
+    Nothing is written.
+    """
     files = {}
     for edit in edits:
         path = (WORK / edit["path"]).resolve()
@@ -59,15 +65,19 @@ def planned_edits(edits):
             raise ValueError(f"{edit['path']}: outside the pull request checkout")
         if path not in files:
             files[path] = path.read_text() if path.exists() else None
-        text, old = files[path], edit["old"]
-        if old == "":
+        text, old = files[path], edit.get("old", "")
+        if edit.get("delete"):
+            if text is None:
+                raise ValueError(f"{edit['path']}: cannot delete a missing file")
+            files[path] = None
+        elif old == "":
             if text is not None:
                 raise ValueError(f"{edit['path']}: empty `old` but the file exists")
-            files[path] = edit["new"]
+            files[path] = edit.get("new", "")
         elif text is None or text.count(old) != 1:
             raise ValueError(f"{edit['path']}: `old` does not occur exactly once")
         else:
-            files[path] = text.replace(old, edit["new"], 1)
+            files[path] = text.replace(old, edit.get("new", ""), 1)
     return files
 
 
@@ -78,8 +88,11 @@ def push_fix(out):
     except (ValueError, OSError) as error:
         return None, f"\n\nThe proposed fix was not applied: {error}."
     for path, text in files.items():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text)
+        if text is None:
+            path.unlink()
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text)
     git("add", "-A")
     message = out.get("commit_message") or "Apply automated review fixes"
     git(
@@ -109,6 +122,8 @@ def push_fix(out):
 
 
 def as_list(findings):
+    if not findings:
+        return ""
     return "\n" + "".join(f"\n- `{f['path']}:{f['line']}`: {f['body']}" for f in findings)
 
 
@@ -143,8 +158,10 @@ def main():
             commit_id, body, findings = new_sha, body + as_list(findings), []
 
     approve = ACT and out.get("lgtm") is True and fixed
-    if approve and not body.lstrip().upper().startswith("LGTM"):
-        body = "LGTM\n\n" + body
+    if approve:
+        if not body.lstrip().upper().startswith("LGTM"):
+            body = "LGTM\n\n" + body
+        body += "\n\nThis will be merged automatically once CI passes."
     review = {
         "commit_id": commit_id,
         "body": body + FOOTER,
@@ -164,6 +181,9 @@ def main():
         review["comments"] = []
         api("POST", f"repos/{REPO}/pulls/{PR}/reviews", review)
     print(f"Posted review: {review['event']}.")
+    if approve and commit_id == HEAD_SHA:
+        # Nothing was pushed, so CI may already have passed on this head.
+        merge_if_ready(PR)
 
 
 if __name__ == "__main__":

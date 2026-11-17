@@ -88,8 +88,9 @@ of that path; run them afterwards.
 
 New issues get an automated first reply, and `@claude` in a comment asks Claude Code for more.
 Pull requests get an automated review. Claude only reads and decides; the replies, reviews,
-closes, approvals and fix commits are posted under the maintainer's account with the
-`MAINTAINER_TOKEN` secret. For contributors outside the repository the reviewer may close a pull
-request it finds of no value, push fixes to one worth taking when "Allow edits by maintainers" is
-on (committed as the maintainer with Claude as co-author, then tested by CI), and approve with
-"LGTM". Merging stays with the maintainer.
+closes, approvals, fix commits and merges are made under the maintainer's account with the
+`MAINTAINER_TOKEN` secret. For contributors outside the repository the reviewer closes pull
+requests that are not needed, removes redundant code and tests and fixes what it can when "Allow
+edits by maintainers" is on (committed as the maintainer with Claude as co-author), and approves
+with "LGTM"; the pull request is then squash-merged once CI passes on that commit. Collaborators'
+pull requests get a review only.
