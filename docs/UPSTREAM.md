@@ -20,6 +20,11 @@ evaluation, CLI, HTTP, MCP and the framework integrations) is upstream's host co
   `False` (raises with `strict=True`).
 - `embed_fn_from_agent` validates `tok`/`model.encoder` before importing MLX and keeps native mean
   pooling.
+- The final decision-head layer keeps full QKV projections and attention, but computes its output
+  projection and FFN only for CLS and option-marker positions, which are the outputs inference
+  reads. This preserves the mathematical dependencies; changed projection shapes can affect
+  floating-point rounding. `tests/test_selected_head.py` checks selected outputs against the full
+  head, including zero head layers, padding, FP32/FP16 and compilation.
 
 ## Not included
 
