@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*'
+  # Upstream release dispatches this on the tag it pushes (see upstream-release.yml).
+  workflow_dispatch:
 
 permissions:
   contents: read
