@@ -152,10 +152,17 @@ jobs:
             pull request, with your fixes, is correct, in scope and ready for the maintainer to
             merge once CI passes, write pr-lgtm.md: "LGTM" and one or two sentences on why. The
             workflow submits it as an approving review after your fixes are pushed. Leave it out
-            if anything is left for the author or you are unsure.
+            if anything is left for the author or you are unsure. Housekeeping the maintainer does
+            at release time, such as a CHANGELOG entry, does not block LGTM. State in your comment
+            whether you marked it LGTM.
 
             Never request changes or merge; the maintainer merges. Say in your comment that it is
             an automated review.
+      - name: Show denied tool calls
+        if: always() && steps.claude.outputs.execution_file
+        env:
+          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+        run: jq -c '.[] | select(.type == "result") | .permission_denials[]? | {tool_name, tool_input}' "$EXECUTION_FILE" || true
       - name: Push Claude's fixes and LGTM
         if: steps.pr.outputs.act == 'true'
         env:
