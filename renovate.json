@@ -7,6 +7,9 @@
   "timezone": "Asia/Shanghai",
   "rebaseWhen": "conflicted",
   "commitBody": "Co-Authored-By: Renovate Bot <bot@renovateapp.com>",
+  "gitIgnoredAuthors": [
+    "41898282+claude[bot]@users.noreply.github.com"
+  ],
   "customManagers": [
     {
       "customType": "regex",
