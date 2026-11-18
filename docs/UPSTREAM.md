@@ -21,6 +21,9 @@ evaluation, CLI, HTTP, MCP and the framework integrations) is upstream's host co
 - `embed_fn_from_agent` validates `tok`/`model.encoder` before importing MLX and keeps native mean
   pooling. Like [upstream's tokenizer call](https://github.com/NandhaKishorM/laya/blob/80a1da1fa5448ea12163f4d977935625a0aea670/laya/shortlist.py#L271-L278),
   it truncates through the tokenizer, preserving special tokens, on a private copy of it.
+  The native keyword `bucket_by_length=True` groups similar lengths within `batch_size` and
+  restores input order, reducing padding for long queries mixed with short labels. It defaults
+  to `False`: batch-shape rounding can reorder near-tied candidates, particularly in FP16.
 - The final decision-head layer keeps full QKV projections and attention, but computes its output
   projection and FFN only for CLS and option-marker positions, which are the outputs inference
   reads. This preserves the mathematical dependencies; changed projection shapes can affect

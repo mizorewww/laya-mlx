@@ -237,6 +237,8 @@ def embed_fn_from_agent(
     agent: Any,
     max_length: int = 512,
     batch_size: int = 32,
+    *,
+    bucket_by_length: bool = False,
 ) -> Callable[[Sequence[str]], np.ndarray]:
     """Mean-pool the checkpoint encoder already loaded on ``agent``.
 
@@ -247,6 +249,10 @@ def embed_fn_from_agent(
 
     Padding positions are excluded from the mean. The encoder runs in eval mode on the
     agent's own device (a loaded ``Agent`` is already in eval).
+
+    ``bucket_by_length=True`` groups similar token lengths to reduce padding and
+    restores input order. Different batch shapes can change floating-point rounding
+    and near-tied shortlist rankings, especially in FP16; the default keeps input batches.
     """
     if isinstance(max_length, bool) or not isinstance(max_length, int) or max_length < 1:
         raise ValueError("max_length must be a positive integer, got %r" % (max_length,))
@@ -271,9 +277,9 @@ def embed_fn_from_agent(
         if not rows:
             return np.zeros((0, hidden), dtype=np.float32)
         parts: List[np.ndarray] = []
-        for start in range(0, len(rows), batch_size):
-            chunk = rows[start : start + batch_size]
-            encoded = [tokenizer.encode(text, add_special_tokens=True).ids for text in chunk]
+        order = []
+        for indices, encoded in _embedding_batches(tokenizer, rows, batch_size, bucket_by_length):
+            order.extend(indices)
             length = max(1, max(len(ids) for ids in encoded))
             input_ids = np.full((len(encoded), length), tok.pad_token_id, dtype=np.int32)
             attention_mask = np.zeros((len(encoded), length), dtype=np.bool_)
@@ -288,9 +294,34 @@ def embed_fn_from_agent(
                 )
                 mx.eval(pooled)
             parts.append(np.asarray(pooled, dtype=np.float32))
-        return np.concatenate(parts, axis=0)
+        result = np.concatenate(parts, axis=0)
+        return result[np.argsort(order)] if bucket_by_length else result
 
     return embed_fn
+
+
+def _embedding_batches(tokenizer, rows, batch_size, bucket_by_length):
+    if not bucket_by_length:
+        for start in range(0, len(rows), batch_size):
+            indices = range(start, min(start + batch_size, len(rows)))
+            yield indices, [tokenizer.encode(rows[i], add_special_tokens=True).ids for i in indices]
+        return
+
+    encoded = [tokenizer.encode(text, add_special_tokens=True).ids for text in rows]
+    lengths = [max(1, len(ids)) for ids in encoded]
+    order = sorted(range(len(rows)), key=lengths.__getitem__)
+    start = 0
+    while start < len(order):
+        end = start + 1
+        # Bound padding to twice the shortest row, while respecting the caller's batch cap.
+        while (
+            end < min(start + batch_size, len(order))
+            and lengths[order[end]] <= 2 * lengths[order[start]]
+        ):
+            end += 1
+        indices = order[start:end]
+        yield indices, [encoded[i] for i in indices]
+        start = end
 
 
 def cached_embed_fn(
