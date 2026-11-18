@@ -28,7 +28,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event.pull_request.head.ref == 'renovate/upstream-laya' &&
        github.event.pull_request.head.repo.full_name == github.repository &&
-       github.event.pull_request.user.login == 'renovate[bot]')
+       github.event.pull_request.user.login == github.repository_owner)
     runs-on: macos-26
     timeout-minutes: 300
     env:
@@ -68,10 +68,9 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # The Claude GitHub App does not act for Renovate; push with GITHUB_TOKEN.
+          # Push with GITHUB_TOKEN; the next step starts CI on the result.
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          # The trigger is renovate[bot]; the branch lives in this repository.
-          allowed_bots: renovate
+          # Renovate (renovate.yml) opens the PR as the maintainer, on a branch in this repository.
           restrict_untrusted_prs: "false"
           claude_args: >-
             --model claude-opus-5-5

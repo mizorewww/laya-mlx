@@ -80,7 +80,8 @@ The release workflow reruns CI, checks that the tag and all three versions agree
 `twine check`s the wheel and sdist, publishes to PyPI with the `PYPI_API_TOKEN` secret, and creates a
 GitHub release. Any failure stops the release before publishing.
 
-Upstream releases are ported and released without a maintainer. Renovate opens a PR on
+Upstream releases are ported and released without a maintainer. Renovate, which
+`.github/workflows/renovate.yml` runs hourly with the maintainer's token, opens a PR on
 `renovate/upstream-laya` for each upstream tag, Claude Code ports it there following
 [.github/upstream-port.md](.github/upstream-port.md), and when every check passes and CI is green the
 PR is merged, tagged and released. Real-checkpoint validation and the wheel smoke test are not part

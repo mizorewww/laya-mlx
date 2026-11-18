@@ -1,0 +1,33 @@
+name: Renovate
+
+# Runs Renovate on this repository every hour with the maintainer's token, so its
+# branches, PRs and Dependency Dashboard are the maintainer's and their pushes start
+# the usual workflows. renovate.json holds what it updates and how.
+
+on:
+  schedule:
+    - cron: "23 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: renovate
+  cancel-in-progress: false
+
+jobs:
+  renovate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: renovatebot/github-action@1c0cf989c02653fba0efe7ca5772338860ca71dc # v46.3.12
+        with:
+          token: ${{ secrets.MAINTAINER_TOKEN }}
+          renovate-version: 44.178.0
+        env:
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
+          RENOVATE_ONBOARDING: "false"
+          RENOVATE_REQUIRE_CONFIG: required
+          # Commits are the maintainer's; renovate.json's commitBody credits Renovate.
+          RENOVATE_GIT_AUTHOR: mizorewww <aac6fef@icloud.com>

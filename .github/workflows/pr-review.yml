@@ -32,7 +32,7 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (!github.event.pull_request.draft &&
-       github.event.pull_request.user.login != 'renovate[bot]' &&
+       !startsWith(github.event.pull_request.head.ref, 'renovate/') &&
        !startsWith(github.event.pull_request.head.ref, 'adopt/pr-'))
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -200,5 +200,5 @@ jobs:
           # Fixes are committed as the maintainer, with Claude as co-author.
           AUTHOR: mizorewww <aac6fef@icloud.com>
           CO_AUTHOR: "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
-          CI_WORKFLOW: CI
+          CI_WORKFLOWS: CI
         run: python3 .github/scripts/review_act.py

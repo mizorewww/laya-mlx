@@ -8,7 +8,9 @@ current head:
   outside the repository with the automation's approval of that exact commit as
   the maintainer's latest review, or is an adopt/pr-<n> pull request the
   automation opened (then the adopted pull request is closed after the merge);
-- the latest CI run on that commit succeeded.
+- the latest run of each CI workflow (CI_WORKFLOWS, comma-separated) on that commit
+  succeeded, and at least one ran. With no CI workflows configured, the approval
+  alone is enough.
 """
 
 import json
@@ -20,7 +22,9 @@ import urllib.request
 
 REPO = os.environ["GITHUB_REPOSITORY"]
 TOKEN = os.environ["MAINTAINER_TOKEN"]
-CI_WORKFLOW = os.environ["CI_WORKFLOW"]
+CI_WORKFLOWS = {
+    name.strip() for name in os.environ.get("CI_WORKFLOWS", "").split(",") if name.strip()
+}
 MARKER = "Automated review drafted by Claude Code."
 TRUSTED = {"OWNER", "MEMBER", "COLLABORATOR"}
 ADOPT_PREFIX = "adopt/pr-"
@@ -85,13 +89,20 @@ def not_ready(pr, me):
             and MARKER in (mine[-1]["body"] or "")
         ):
             return "no automated approval of the current head"
+    if not CI_WORKFLOWS:
+        return None
+    # Path filters may skip some workflows; each one that ran must have passed.
     runs = api("GET", f"repos/{REPO}/actions/runs?head_sha={sha}&per_page=100")["workflow_runs"]
-    runs = [r for r in runs if r["name"] == CI_WORKFLOW and r["event"] == "pull_request"]
-    if not runs:
+    latest = {}
+    for run in runs:
+        if run["name"] in CI_WORKFLOWS and run["event"] == "pull_request":
+            if run["name"] not in latest or run["created_at"] > latest[run["name"]]["created_at"]:
+                latest[run["name"]] = run
+    if not latest:
         return "CI has not run on the current head"
-    latest = max(runs, key=lambda r: r["created_at"])
-    if latest["conclusion"] != "success":
-        return f"CI is {latest['conclusion'] or latest['status']}"
+    for name, run in sorted(latest.items()):
+        if run["conclusion"] != "success":
+            return f"{name} is {run['conclusion'] or run['status']}"
     return None
 
 

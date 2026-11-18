@@ -40,4 +40,4 @@ jobs:
           GH_REPO: ${{ github.repository }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           MAINTAINER_TOKEN: ${{ secrets.MAINTAINER_TOKEN }}
-          CI_WORKFLOW: CI
+          CI_WORKFLOWS: CI

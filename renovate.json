@@ -5,6 +5,8 @@
     ":dependencyDashboard"
   ],
   "timezone": "Asia/Shanghai",
+  "rebaseWhen": "conflicted",
+  "commitBody": "Co-Authored-By: Renovate Bot <bot@renovateapp.com>",
   "customManagers": [
     {
       "customType": "regex",
@@ -24,7 +26,6 @@
     {
       "description": "Everything except upstream: detect and list on the Dependency Dashboard, open a PR only when ticked there",
       "matchPackageNames": [
-        "*",
         "!NandhaKishorM/laya"
       ],
       "dependencyDashboardApproval": true
