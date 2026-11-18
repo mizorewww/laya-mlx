@@ -1,4 +1,4 @@
-"""Host prediction methods ported from official Laya v0.4.34.
+"""Host prediction methods ported from official Laya v0.4.35.
 
 MLX adaptation is restricted to tensor execution and resource cleanup.
 """
