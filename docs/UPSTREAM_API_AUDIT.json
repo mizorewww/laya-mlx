@@ -1729,7 +1729,14 @@
     {
       "module": "shortlist.py",
       "callable": "embed_fn_from_agent",
-      "status": "signature_matches"
+      "status": "native_keyword_extensions",
+      "additions": {
+        "bucket_by_length": [
+          "keyword",
+          "Constant(value=False)"
+        ]
+      },
+      "changed": {}
     },
     {
       "module": "shortlist.py",
