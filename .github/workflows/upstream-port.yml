@@ -68,6 +68,8 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # The port works on public code only; keep its transcript in the log.
+          show_full_output: true
           # Push with GITHUB_TOKEN; the next step starts CI on the result.
           github_token: ${{ secrets.GITHUB_TOKEN }}
           # Renovate (renovate.yml) opens the PR as the maintainer, on a branch in this repository.
