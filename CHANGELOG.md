@@ -3,6 +3,18 @@
 Each release names the upstream [Laya](https://github.com/NandhaKishorM/laya) revision whose host
 behavior it follows. Detailed records live in [docs/](docs/README.md).
 
+## 0.7.1 — 2026-11-18
+
+Follows upstream **v0.4.35** (`b1d65695`). [Compatibility record](docs/UPSTREAM.md).
+
+- No change in behavior. Upstream v0.4.35 adds `route()` to its TypeScript HTTP client, which
+  calls `POST /v1/route`; `laya-mlx-serve` has served that endpoint since 0.7.0, so the client
+  works against it.
+- Upstream's `hooks_api` suite now also checks that the TypeScript routing types stay outside the
+  root exports; it runs unchanged here.
+- Validation: host, contract and native tests and the public API audit on the release source.
+  Real-checkpoint validation was not re-run; no model or engine code changed.
+
 ## 0.7.0 — 2026-11-16
 
 Follows upstream **v0.4.34** (`80a1da1f`). [Compatibility record](docs/UPSTREAM.md).
