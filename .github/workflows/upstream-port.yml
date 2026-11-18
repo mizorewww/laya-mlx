@@ -3,11 +3,17 @@ name: Upstream port
 # Renovate opens renovate/upstream-laya when NandhaKishorM/laya tags a release
 # (see renovate.json). This job ports that release with Claude Code and pushes
 # the result to the same branch, so CI runs on it and a human merges and tags.
+# When CI fails on the port's commit, Claude reads the failure and fixes it; a
+# failure that is not the port's gets its failed jobs rerun instead.
 
 on:
   pull_request:
     types: [opened, reopened]
   workflow_dispatch:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [renovate/upstream-laya]
 
 permissions:
   contents: write
@@ -23,12 +29,47 @@ env:
   BRANCH: renovate/upstream-laya
 
 jobs:
-  port:
+  # A failed CI run starts a fix only on the port's own commit while it is the head,
+  # with at most three fixing commits and three attempts of a run.
+  gate:
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'failure' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.gate.outputs.run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BRANCH }}
+          fetch-depth: 0
+          persist-credentials: false
+      - id: gate
+        env:
+          EVENT: ${{ github.event_name }}
+          FAILED_SHA: ${{ github.event.workflow_run.head_sha }}
+          ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        run: |
+          run=true
+          if [ "$EVENT" = workflow_run ]; then
+            fixes=$(git log --format=%B origin/main..HEAD | grep -c '^Co-Authored-By: Claude' || true)
+            if [ "$(git rev-parse HEAD)" != "$FAILED_SHA" ] || [ "$fixes" -eq 0 ] ||
+               [ "$fixes" -gt 3 ] || [ "$ATTEMPT" -ge 3 ]; then
+              run=false
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
+  port:
+    needs: gate
+    if: >-
+      needs.gate.outputs.run == 'true' &&
+      (github.event_name != 'pull_request' ||
       (github.event.pull_request.head.ref == 'renovate/upstream-laya' &&
        github.event.pull_request.head.repo.full_name == github.repository &&
-       github.event.pull_request.user.login == github.repository_owner)
+       github.event.pull_request.user.login == github.repository_owner))
     runs-on: macos-26
     timeout-minutes: 300
     env:
@@ -80,6 +121,14 @@ jobs:
             --allowedTools Bash,Read,Edit,Write,Glob,Grep,TodoWrite
           prompt: |
             Port upstream NandhaKishorM/laya ${{ steps.range.outputs.new_tag }} into this repository.
+            ${{ github.event_name == 'workflow_run' && format('
+            The port is already committed on the branch, but CI run {0} failed on it. Fix that
+            failure: `gh run view {0} --log-failed` shows what failed. Find the cause, fix it as
+            .github/upstream-port.md allows (never by weakening a check or a test), run its
+            checks again, then commit, push, label and comment as it says. If the failure is
+            not the port''s (a runner, network or flaky failure), change nothing and comment
+            that; the workflow then reruns the failed jobs.
+            ', github.event.workflow_run.id) || '' }}
 
             - Repository: ${{ github.repository }}, branch ${{ env.BRANCH }} (already checked out), pull request #${{ steps.range.outputs.pr }}.
             - Current port: ${{ steps.range.outputs.old_tag }} (${{ steps.range.outputs.old_sha }}).
@@ -88,12 +137,20 @@ jobs:
 
             Read .github/upstream-port.md and follow it exactly. In that file OLD/NEW stand for the commits
             above and OLD_VERSION for the current port's version without the leading v.
-      # A push with GITHUB_TOKEN starts no workflow, so run CI on the port explicitly;
-      # upstream-release.yml acts when it passes.
+            Run every command in the foreground and wait for it to finish; the job ends when you answer.
+      # A push with GITHUB_TOKEN starts no workflow, so run CI on the port explicitly,
+      # as the maintainer: a run GITHUB_TOKEN starts would not start upstream-release.yml
+      # (or a fix here) when it completes.
       - name: Run CI on the port
-        if: always()
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ secrets.MAINTAINER_TOKEN }}
+          FAILED_RUN: ${{ github.event.workflow_run.id }}
         run: |
           git fetch -q origin "$BRANCH"
           if [ "$(git rev-parse "origin/$BRANCH")" != "${{ steps.range.outputs.start }}" ]; then
             gh workflow run ci.yml --ref "$BRANCH"
+          elif [ -n "$FAILED_RUN" ]; then
+            # Nothing to change: the failure was not the port's, so try the failed jobs again.
+            gh run rerun "$FAILED_RUN" --failed
           fi
