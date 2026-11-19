@@ -1,5 +1,5 @@
 {
-  "upstream_revision": "b1d656952f0f9581ea691a70cb6f38abf3eb13a9",
+  "upstream_revision": "d1282e791d71e92f24f816ff3836e4fd1c2ded4a",
   "package": "laya_mlx",
   "scope": "public functions, explicitly defined public class methods, inherited Agent host methods and root __all__; annotations use native tensor types where needed",
   "rows": [

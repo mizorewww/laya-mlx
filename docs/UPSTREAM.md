@@ -1,7 +1,7 @@
 # Upstream compatibility
 
-Host behavior follows [NandhaKishorM/laya](https://github.com/NandhaKishorM/laya) **v0.4.35**
-(`b1d656952f0f9581ea691a70cb6f38abf3eb13a9`). CI checks that commit out into `.upstream`, runs its
+Host behavior follows [NandhaKishorM/laya](https://github.com/NandhaKishorM/laya) **v0.4.37**
+(`d1282e791d71e92f24f816ff3836e4fd1c2ded4a`). CI checks that commit out into `.upstream`, runs its
 unchanged host suites against this package, and audits the public API against it. This page is
 the current record; what each release changed is in the [changelog](../CHANGELOG.md).
 
@@ -19,7 +19,7 @@ evaluation, CLI, HTTP, MCP and the framework integrations) is upstream's host co
 - `backend` and `dtype_for()` report MLX. `set_backend()` raises; TileLang `accelerate()` returns
   `False` (raises with `strict=True`).
 - `embed_fn_from_agent` validates `tok`/`model.encoder` before importing MLX and keeps native mean
-  pooling. Like [upstream's tokenizer call](https://github.com/NandhaKishorM/laya/blob/b1d656952f0f9581ea691a70cb6f38abf3eb13a9/laya/shortlist.py#L271-L278),
+  pooling. Like [upstream's tokenizer call](https://github.com/NandhaKishorM/laya/blob/d1282e791d71e92f24f816ff3836e4fd1c2ded4a/laya/shortlist.py#L271-L278),
   it truncates through the tokenizer, preserving special tokens, on a private copy of it.
   The native keyword `bucket_by_length=True` groups similar lengths within `batch_size` and
   restores input order, reducing padding for long queries mixed with short labels. It defaults
@@ -50,10 +50,10 @@ media arguments raise `ValueError`, and `laya-mlx-serve` and `RemoteRouter` refu
 
 ## Deliberate divergences
 
-These fix defects that upstream v0.4.35 still has. Each keeps upstream's public API and is pinned
+These fix defects that upstream v0.4.37 still has. Each keeps upstream's public API and is pinned
 by its own regression tests.
 
-| Behavior | Upstream v0.4.35 | MLX | Tests |
+| Behavior | Upstream v0.4.37 | MLX | Tests |
 |---|---|---|---|
 | Long-text window tokens | Decodes and re-encodes each window, which can add tokens and truncate its tail | Window objects reuse their original tokens; plain strings returned by hooks are re-encoded. Attribution still follows upstream's text-equality check | `tests/test_window_embedding_integrity.py` |
 | Embedding cache invalidation | In-flight embeddings can repopulate a cleared cache | A generation counter prevents old calls from writing into the new cache | `tests/test_window_embedding_integrity.py` |
@@ -63,28 +63,25 @@ by its own regression tests.
 
 When an upstream release fixes one of these, adopt upstream's version and remove the row.
 
-## v0.4.34 → v0.4.35 file inventory
+## v0.4.35 → v0.4.37 file inventory
 
-`git diff v0.4.34 v0.4.35 -- laya tests` touches 3 files (96 additions, 1 deletion). Nothing in
-the host code this package mirrors changed; the release adds `Laya.route()` to the TypeScript
-HTTP SDK, which calls the `POST /v1/route` endpoint that `laya-mlx-serve` already serves.
+`git diff v0.4.35 v0.4.37 -- laya tests` touches 1 file (1 addition, 1 deletion). Across v0.4.36
+and v0.4.37 upstream changed only its README (a Studio section), packaging versions and the Nix
+package; nothing in the host code or tests this package mirrors changed.
 
 | Upstream file | Port | Scope |
 |---|---|---|
 | `laya/__init__.py` | — | Version bump; not ported. |
-| `tests/test_hooks_api.py` | runs unchanged | Two new checks that the TypeScript `RouteSnapshot` and `RouteOptions` types stay outside the root `__all__`. |
-| `tests/sdk_route_server_fixture.py` | — | Model-free HTTP fixture for the TypeScript SDK's integration tests; it imports `laya.serve` directly and is not a Python suite. |
 
-The host files were last merged three-way at v0.4.34. Changes to upstream's other SDKs (here the
-TypeScript client, its tests and docs), training and research tools, notebooks and deployment
-files are outside this package.
+The host files were last merged three-way at v0.4.34. Changes to upstream's other SDKs, training
+and research tools, notebooks, deployment and packaging files are outside this package.
 
 ## How upstream assertions run
 
 `tests/test_official_host.py` runs 34 pinned upstream suites through
 `scripts/run_official_test.py`, which rewrites the `laya` namespace and mock targets and nothing
 else: assertions, expected values, public model names and timing thresholds are upstream's. This pin
-adds no suites; `hooks_api` gained two export checks.
+adds and changes no suites.
 `tests/test_official_contract.py` adds AST equality for host methods, differential runs against
 upstream on identical inputs, and the native MCP suite.
 The AST checks normalize only the two token-preserving expressions in `_encode_state` and
@@ -119,7 +116,7 @@ same assertion failed against unmodified upstream on the same runner
 are unchanged here; CI runs host contracts in their own process first and, on failure, reruns the
 original upstream test for comparison.
 
-## Validation for 0.7.1
+## Validation for 0.7.2
 
 Automated port run (macOS arm64 runner, `LAYA_MLX_TEST_DEVICE=cpu`) on the release source:
 
@@ -128,7 +125,7 @@ Automated port run (macOS arm64 runner, `LAYA_MLX_TEST_DEVICE=cpu`) on the relea
 | `pytest -q tests/test_official_host.py tests/test_official_contract.py` | 77 passed (34 upstream suite wrappers plus contract tests) |
 | `pytest -q tests/test_parallel_layout.py` | 11 passed |
 | `pytest -q tests/test_runtime.py` | 25 passed |
-| Remaining native and integration tests | 251 passed, 1 skipped |
+| Remaining native and integration tests | 256 passed, 1 skipped |
 | `scripts/audit_public_api.py --package laya_mlx` | 351 surface entries, 0 unclassified differences |
 | `ruff check .`, `ruff format --check .`, `compileall` | Passed |
 | `python -m build` | Built wheel and sdist |
@@ -137,7 +134,7 @@ Real-checkpoint validation (`python -m benchmarks.validate --repeats 100`) and t
 test from a clean inference-only environment were not run for this release; they run locally on
 Apple silicon. The last real-checkpoint run was for 0.7.0 against the v0.4.34 reference: 63/63
 argmax agreement for all three checkpoints in FP32 and FP16, 100 stable calls each. Neither the
-model code nor the upstream engine changed between v0.4.34 and v0.4.35.
+model code nor the upstream engine changed between v0.4.34 and v0.4.37.
 
 Performance and memory were not re-measured; [BENCHMARKS.md](../BENCHMARKS.md) describes the
 revisions it names. Remote CI runs the same suites on Linux (host only) and macOS 26.
@@ -148,7 +145,7 @@ revisions it names. Remote CI runs the same suites on Linux (host only) and macO
 uv venv .venv
 uv pip install --python .venv/bin/python -e '.[dev,serve,mcp,structured]'
 git clone https://github.com/NandhaKishorM/laya .upstream
-git -C .upstream checkout b1d656952f0f9581ea691a70cb6f38abf3eb13a9
+git -C .upstream checkout d1282e791d71e92f24f816ff3836e4fd1c2ded4a
 .venv/bin/pytest -q tests/test_official_host.py tests/test_upstream_0417.py tests/test_upstream_0434.py
 .venv/bin/python scripts/audit_public_api.py --package laya_mlx
 ```

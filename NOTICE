@@ -30,6 +30,7 @@ Host extraction incorporates the laya-coreml port with native MLX backend adapta
 
 Additional applicable host behavior adapted from NandhaKishorM/laya v0.4.17,
 commit fe9a6c35023a7d94102e7feaaeaae8857d9d1b07, v0.4.34,
-commit 80a1da1fa5448ea12163f4d977935625a0aea670, and v0.4.35,
-commit b1d656952f0f9581ea691a70cb6f38abf3eb13a9 (Apache-2.0).
+commit 80a1da1fa5448ea12163f4d977935625a0aea670, v0.4.35,
+commit b1d656952f0f9581ea691a70cb6f38abf3eb13a9, and v0.4.37,
+commit d1282e791d71e92f24f816ff3836e4fd1c2ded4a (Apache-2.0).
 See docs/UPSTREAM.md for source mapping and native backend boundaries.

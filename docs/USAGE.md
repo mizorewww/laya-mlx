@@ -312,8 +312,8 @@ weights, so FP32 raises arithmetic precision, not weight precision.
 ## Upstream compatibility
 
 Host behavior (prompts, validation, routing, calibration, evaluation, HTTP/MCP and integrations)
-follows [NandhaKishorM/laya](https://github.com/NandhaKishorM/laya) v0.4.35
-(`b1d656952f0f9581ea691a70cb6f38abf3eb13a9`). The 351-entry public API audit has no
+follows [NandhaKishorM/laya](https://github.com/NandhaKishorM/laya) v0.4.37
+(`d1282e791d71e92f24f816ff3836e4fd1c2ded4a`). The 351-entry public API audit has no
 unclassified differences ([audit](UPSTREAM_API_AUDIT.json)).
 
 Native boundaries:
