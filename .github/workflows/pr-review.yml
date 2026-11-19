@@ -169,11 +169,15 @@ jobs:
               author's intent; never weaken an assertion; leave .github/ alone. With no edits and
               no conflicts, the pull request is merged as it is. The result is merged
               automatically once CI passes, so adopt only what you are confident is correct and
-              complete; housekeeping done at release time, such as a CHANGELOG entry, is not
+              complete. Not being able to build or run it is no reason to hold back: CI checks the
+              result, and a failure there is fixed automatically (ci-heal.yml, where present). For
+              part of a stack of pull requests, read the others (`gh pr diff <n>`): adopt this part
+              when the rest of the stack builds on it, even while those are drafts. Housekeeping done at release time, such as a CHANGELOG entry, is not
               required. `commit_message`: a subject under 72 characters, a blank line, then what
               changed and why; no trailers. `summary`: to the author, what you changed and why.
-            - "review": only when you cannot judge it confidently, or may not close or take it
-              over. The maintainer decides.
+            - "review": only when you may not close or take it over. Otherwise decide: a change
+              worth having is adopted with what it needs (a fix, tests, docs), and one that is
+              not is closed. Waiting for the maintainer or the author is not an option.
 
             `edits`, `path` relative to the repository root, applied in order to the files in pr/:
             - `old`/`new`: an exact replacement; `old` must occur exactly once in the file as it
