@@ -3,6 +3,15 @@
 Each release names the upstream [Laya](https://github.com/NandhaKishorM/laya) revision whose host
 behavior it follows. Detailed records live in [docs/](docs/README.md).
 
+## 0.7.2 — 2026-11-19
+
+Follows upstream **v0.4.37** (`d1282e79`). [Compatibility record](docs/UPSTREAM.md).
+
+- No change in behavior. Upstream v0.4.36 and v0.4.37 change only upstream's README, package
+  versions and Nix package; no host code or test suite this package mirrors changed.
+- Validation: host, contract and native tests and the public API audit on the release source.
+  Real-checkpoint validation was not re-run; no model or engine code changed.
+
 ## 0.7.1 — 2026-11-18
 
 Follows upstream **v0.4.35** (`b1d65695`). [Compatibility record](docs/UPSTREAM.md).

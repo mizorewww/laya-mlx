@@ -11,7 +11,7 @@ import json
 import subprocess
 from pathlib import Path
 
-PIN = "b1d656952f0f9581ea691a70cb6f38abf3eb13a9"
+PIN = "d1282e791d71e92f24f816ff3836e4fd1c2ded4a"
 BACKEND_MODULES = {
     "train.py",
     "train_cli.py",
