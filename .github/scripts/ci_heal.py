@@ -64,7 +64,10 @@ def open_pr(branch):
 def port_busy(branch):
     for status in ("queued", "in_progress", "waiting", "pending"):
         runs = api("GET", f"repos/{REPO}/actions/workflows/{PORT_WORKFLOW}/runs?status={status}")
-        if any(r["head_branch"] == branch or r["event"] == "workflow_dispatch" for r in runs["workflow_runs"]):
+        if any(
+            r["head_branch"] == branch or r["event"] == "workflow_dispatch"
+            for r in runs["workflow_runs"]
+        ):
             return True
     return False
 
@@ -75,7 +78,11 @@ def start_port(branch, fix_run=""):
     inputs = {"fix_run": str(fix_run)}
     if PORT_BRANCH_INPUT:
         inputs["branch"] = branch
-    api("POST", f"repos/{REPO}/actions/workflows/{PORT_WORKFLOW}/dispatches", {"ref": "main", "inputs": inputs})
+    api(
+        "POST",
+        f"repos/{REPO}/actions/workflows/{PORT_WORKFLOW}/dispatches",
+        {"ref": "main", "inputs": inputs},
+    )
     done(f"Started {PORT_WORKFLOW} on {branch}" + (f" to fix run {fix_run}." if fix_run else "."))
 
 
@@ -90,8 +97,15 @@ def ci_green(sha):
 
 def main():
     run = api("GET", f"repos/{REPO}/actions/runs/{RUN_ID}")
-    branch, sha, name, conclusion = run["head_branch"], run["head_sha"], run["name"], run["conclusion"]
-    print(f"{name} run {RUN_ID} (attempt {run['run_attempt']}) on {branch} at {sha[:7]}: {conclusion}")
+    branch, sha, name, conclusion = (
+        run["head_branch"],
+        run["head_sha"],
+        run["name"],
+        run["conclusion"],
+    )
+    print(
+        f"{name} run {RUN_ID} (attempt {run['run_attempt']}) on {branch} at {sha[:7]}: {conclusion}"
+    )
 
     if name == PORT_NAME:
         # Its head_branch is the PR branch, or main for a dispatch: then check every open port.
@@ -100,8 +114,12 @@ def main():
         if branch.startswith("renovate/"):
             branches = [branch]
         else:
-            branches = [p["head"]["ref"] for p in api("GET", f"repos/{REPO}/pulls?state=open&per_page=100")
-                        if p["head"]["ref"].startswith("renovate/") and p["head"]["repo"]["full_name"] == REPO]
+            branches = [
+                p["head"]["ref"]
+                for p in api("GET", f"repos/{REPO}/pulls?state=open&per_page=100")
+                if p["head"]["ref"].startswith("renovate/")
+                and p["head"]["repo"]["full_name"] == REPO
+            ]
         for port_branch in branches:
             pr = open_pr(port_branch)
             if not pr or any(label["name"] == "port-ready" for label in pr["labels"]):
@@ -110,14 +128,20 @@ def main():
             comments = api("GET", f"repos/{REPO}/issues/{pr['number']}/comments?per_page=100")
             tried = sum(f"port restart for {commit[:12]}" in c["body"] for c in comments)
             if tried >= MAX_PORT_RESTARTS:
-                print(f"{port_branch}: the port did not finish {tried} times at {commit[:7]}; leaving it.")
+                print(
+                    f"{port_branch}: the port did not finish {tried} times at {commit[:7]}; leaving it."
+                )
                 continue
             if port_busy(port_branch):
                 continue
-            api("POST", f"repos/{REPO}/issues/{pr['number']}/comments", {
-                "body": f"The port run did not finish ({run['html_url']}); starting it again.\n\n"
-                f"<sub>Automated port restart for {commit[:12]}.</sub>",
-            })
+            api(
+                "POST",
+                f"repos/{REPO}/issues/{pr['number']}/comments",
+                {
+                    "body": f"The port run did not finish ({run['html_url']}); starting it again.\n\n"
+                    f"<sub>Automated port restart for {commit[:12]}.</sub>",
+                },
+            )
             start_port(port_branch)
         done("No unfinished port to restart.")
 
@@ -133,8 +157,15 @@ def main():
     if conclusion == "success":
         pr = open_pr(branch) if branch.startswith("ci-fix/") else None
         if pr and ci_green(sha):
-            api("PUT", f"repos/{REPO}/pulls/{pr['number']}/merge",
-                {"merge_method": "squash", "sha": sha, "commit_title": f"{pr['title']} (#{pr['number']})"})
+            api(
+                "PUT",
+                f"repos/{REPO}/pulls/{pr['number']}/merge",
+                {
+                    "merge_method": "squash",
+                    "sha": sha,
+                    "commit_title": f"{pr['title']} (#{pr['number']})",
+                },
+            )
             api("DELETE", f"repos/{REPO}/git/refs/heads/{branch}")
             done(f"Merged #{pr['number']}.")
         done("Nothing to do.")
@@ -143,7 +174,9 @@ def main():
 
     if run["run_attempt"] > MAX_RUN_ATTEMPTS:
         done(f"Attempt {run['run_attempt']} failed too; leaving it to the maintainer.")
-    jobs = api("GET", f"repos/{REPO}/actions/runs/{RUN_ID}/attempts/{run['run_attempt']}/jobs?per_page=100")["jobs"]
+    jobs = api(
+        "GET", f"repos/{REPO}/actions/runs/{RUN_ID}/attempts/{run['run_attempt']}/jobs?per_page=100"
+    )["jobs"]
     failed = [j for j in jobs if j["conclusion"] in FAILED]
     # A job that failed in one of its own steps is a real failure; any other failed job
     # (cancelled, timed out, never started, runner lost) is the runner's.
