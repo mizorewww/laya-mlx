@@ -6,7 +6,9 @@ name: CI heal
 # cancelled, timed out). A port run that did not finish starts again, and any other
 # failure on a renovate/ branch goes to the port workflow, which fixes it in place.
 # Any other failure on main goes to Claude Code, which opens a ci-fix/ pull request
-# and keeps fixing that branch until CI passes on it; this workflow then merges it.
+# and keeps fixing that branch until CI passes on it; this workflow then merges it. A
+# contributor's pull request is fixed the same way only while its head is a commit the
+# maintainer approved (the review adopted it); pr-merge.yml merges it once CI passes.
 # Each loop has a limit, after which the failure waits for the maintainer.
 
 on:
@@ -25,12 +27,13 @@ concurrency:
 
 jobs:
   triage:
-    if: github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       action: ${{ steps.triage.outputs.action }}
       branch: ${{ steps.triage.outputs.branch }}
+      head_repo: ${{ steps.triage.outputs.head_repo }}
+      pr: ${{ steps.triage.outputs.pr }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -51,11 +54,14 @@ jobs:
     timeout-minutes: 240
     env:
       BRANCH: ${{ needs.triage.outputs.branch }}
+      HEAD_REPO: ${{ needs.triage.outputs.head_repo || github.repository }}
+      PR: ${{ needs.triage.outputs.pr }}
       GH_TOKEN: ${{ github.token }}
       RUN_ID: ${{ github.event.workflow_run.id }}
     steps:
       - uses: actions/checkout@v4
         with:
+          repository: ${{ env.HEAD_REPO }}
           ref: ${{ env.BRANCH }}
           fetch-depth: 0
           persist-credentials: false
@@ -74,8 +80,8 @@ jobs:
             --allowedTools Bash,Read,Edit,Write,Glob,Grep,TodoWrite
             --json-schema '{"type":"object","required":["fixed","title","summary"],"properties":{"fixed":{"type":"boolean"},"title":{"type":"string"},"summary":{"type":"string"}}}'
           prompt: |
-            CI failed on branch ${{ env.BRANCH }} of ${{ github.repository }}, at the commit checked out
-            in the working directory. Make it pass again.
+            CI failed on branch ${{ env.BRANCH }} of ${{ env.HEAD_REPO }}${{ env.PR && format(' (pull request #{0} to {1})', env.PR, github.repository) || '' }},
+            at the commit checked out in the working directory. Make it pass again.
 
             - `gh run view ${{ env.RUN_ID }} --log-failed` shows what failed; `gh run list --commit $(git rev-parse HEAD)`
               lists every CI run on this commit. The workflow files under .github/workflows show how
@@ -112,11 +118,16 @@ jobs:
             exit 0
           fi
           target=$BRANCH
-          [ "$BRANCH" != main ] || target="ci-fix/$RUN_ID"
+          [ -n "$PR" ] || [ "$BRANCH" != main ] || target="ci-fix/$RUN_ID"
           # Bypass the read-only credentials the Claude action configured for this checkout.
           git -c credential.helper= -c http.https://github.com/.extraheader= \
-            push -q "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git" "HEAD:refs/heads/$target"
-          if [ "$BRANCH" = main ]; then
+            push -q "https://x-access-token:$GH_TOKEN@github.com/$HEAD_REPO.git" "HEAD:refs/heads/$target"
+          if [ -n "$PR" ]; then
+            # The maintainer vouches for the fix too, so pr-merge.yml merges it once CI passes.
+            gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/reviews" -f event=APPROVE \
+              -f commit_id="$(git rev-parse HEAD)" -F body=@"$RUNNER_TEMP/summary.md" --silent
+            gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -F body=@"$RUNNER_TEMP/summary.md" --silent
+          elif [ "$BRANCH" = main ]; then
             # REST, not `gh pr create`: its GraphQL calls need read:org, which the token lacks.
             title=$(jq -r '.title // empty' <<<"$OUTPUT")
             gh api "repos/$GITHUB_REPOSITORY/pulls" -f base=main -f head="$target" \

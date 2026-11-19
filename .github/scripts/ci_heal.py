@@ -1,9 +1,11 @@
 """Decide what to do about a completed CI or port run (.github/workflows/ci-heal.yml).
 
 Acts as the maintainer (MAINTAINER_TOKEN), so the runs it starts trigger workflows.
-Prints `action=fix` to GITHUB_OUTPUT when Claude must fix main or a ci-fix/ branch;
-everything else it does itself:
-- a run on a commit that is no longer its branch's head is ignored;
+Prints `action=fix` to GITHUB_OUTPUT when Claude must fix main, a ci-fix/ branch, or a
+pull request the maintainer approved at its current head (one the review adopted;
+pr-merge.yml merges it once CI passes). Everything else it does itself:
+- a run on a commit that is no longer its branch's head is ignored, and so is any other
+  branch or pull request: its code is not trusted with this job's secrets;
 - jobs that never got a runner, were cancelled or timed out are rerun;
 - a real failure on a renovate/ branch, or a port run that did not finish, starts
   the port workflow (which fixes CI when its commit is already on the branch);
@@ -86,6 +88,19 @@ def start_port(branch, fix_run=""):
     done(f"Started {PORT_WORKFLOW} on {branch}" + (f" to fix run {fix_run}." if fix_run else "."))
 
 
+def approved_pr(sha):
+    """The open pull request whose head is sha, approved there by the maintainer."""
+    owner = REPO.split("/")[0]
+    for pr in api("GET", f"repos/{REPO}/pulls?state=open&per_page=100"):
+        if pr["head"]["sha"] != sha or pr["draft"]:
+            continue
+        reviews = api("GET", f"repos/{REPO}/pulls/{pr['number']}/reviews?per_page=100")
+        if any(r["user"]["login"] == owner and r["state"] == "APPROVED" and r["commit_id"] == sha
+               for r in reviews):
+            return pr
+    return None
+
+
 def ci_green(sha):
     runs = api("GET", f"repos/{REPO}/actions/runs?head_sha={sha}&per_page=100")["workflow_runs"]
     latest = {}
@@ -145,17 +160,23 @@ def main():
             start_port(port_branch)
         done("No unfinished port to restart.")
 
-    if branch != "main" and not branch.startswith(("renovate/", "ci-fix/")):
-        done("Not an automation branch.")
-    try:
-        head = api("GET", f"repos/{REPO}/branches/{branch}")["commit"]["sha"]
-    except urllib.error.HTTPError:
-        done(f"{branch} no longer exists.")
-    if head != sha:
-        done(f"{branch} moved to {head[:7]}; its own CI decides.")
+    ours = run["head_repository"]["full_name"] == REPO
+    adopted = None
+    if not ours or (branch != "main" and not branch.startswith(("renovate/", "ci-fix/"))):
+        adopted = approved_pr(sha)
+        if not adopted:
+            done("Not an automation branch, nor a pull request approved at this commit.")
+        branch = adopted["head"]["ref"]
+    else:
+        try:
+            head = api("GET", f"repos/{REPO}/branches/{branch}")["commit"]["sha"]
+        except urllib.error.HTTPError:
+            done(f"{branch} no longer exists.")
+        if head != sha:
+            done(f"{branch} moved to {head[:7]}; its own CI decides.")
 
     if conclusion == "success":
-        pr = open_pr(branch) if branch.startswith("ci-fix/") else None
+        pr = open_pr(branch) if ours and branch.startswith("ci-fix/") else None
         if pr and ci_green(sha):
             api(
                 "PUT",
@@ -186,6 +207,14 @@ def main():
         done("Reran " + ", ".join(j["name"] for j in failed) + ": they did not fail in a step.")
     print("Failed in a step: " + ", ".join(j["name"] for j in real or failed))
 
+    if adopted:
+        comments = api("GET", f"repos/{REPO}/issues/{adopted['number']}/comments?per_page=100")
+        tries = sum("Automated CI fix" in c["body"] for c in comments)
+        if tries >= MAX_FIX_COMMITS:
+            done(f"#{adopted['number']} had {tries} fixes; leaving it to the maintainer.")
+        output(action="fix", branch=branch, head_repo=adopted["head"]["repo"]["full_name"],
+               pr=adopted["number"])
+        done(f"Claude fixes #{adopted['number']}.")
     if branch.startswith("renovate/"):
         if PORT_WORKFLOW:
             start_port(branch, RUN_ID)
