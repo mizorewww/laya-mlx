@@ -1,0 +1,127 @@
+name: CI heal
+
+# Keeps CI green without the maintainer. When a CI run fails on main or on one of this
+# repository's own automation branches, and its commit is still the branch head,
+# .github/scripts/ci_heal.py reruns jobs that failed for the runner (no runner,
+# cancelled, timed out). A port run that did not finish starts again, and any other
+# failure on a renovate/ branch goes to the port workflow, which fixes it in place.
+# Any other failure on main goes to Claude Code, which opens a ci-fix/ pull request
+# and keeps fixing that branch until CI passes on it; this workflow then merges it.
+# Each loop has a limit, after which the failure waits for the maintainer.
+
+on:
+  workflow_run:
+    workflows: ["CI", "Upstream port"]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+concurrency:
+  group: ci-heal-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  triage:
+    if: github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      action: ${{ steps.triage.outputs.action }}
+      branch: ${{ steps.triage.outputs.branch }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: triage
+        run: python3 .github/scripts/ci_heal.py
+        env:
+          MAINTAINER_TOKEN: ${{ secrets.MAINTAINER_TOKEN }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          CI_WORKFLOWS: "CI"
+          PORT_WORKFLOW: "upstream-port.yml"
+          PORT_BRANCH_INPUT: "false"
+
+  fix:
+    needs: triage
+    if: needs.triage.outputs.action == 'fix'
+    runs-on: macos-26
+    timeout-minutes: 240
+    env:
+      BRANCH: ${{ needs.triage.outputs.branch }}
+      GH_TOKEN: ${{ github.token }}
+      RUN_ID: ${{ github.event.workflow_run.id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BRANCH }}
+          fetch-depth: 0
+          persist-credentials: false
+      - id: start
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: anthropics/claude-code-action@v1
+        id: claude
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # The fix works on this repository's code and CI logs; keep its transcript in the log.
+          show_full_output: true
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          claude_args: |
+            --model claude-opus-5-5
+            --max-turns 300
+            --allowedTools Bash,Read,Edit,Write,Glob,Grep,TodoWrite
+            --json-schema '{"type":"object","required":["fixed","title","summary"],"properties":{"fixed":{"type":"boolean"},"title":{"type":"string"},"summary":{"type":"string"}}}'
+          prompt: |
+            CI failed on branch ${{ env.BRANCH }} of ${{ github.repository }}, at the commit checked out
+            in the working directory. Make it pass again.
+
+            - `gh run view ${{ env.RUN_ID }} --log-failed` shows what failed; `gh run list --commit $(git rev-parse HEAD)`
+              lists every CI run on this commit. The workflow files under .github/workflows show how
+              each job sets itself up: install what you need the same way (sudo works).
+            - Follow the repository's rules (AGENTS.md, CLAUDE.md, CONTRIBUTING.md, whichever exist).
+            - Fix the cause. Never delete, skip or weaken a test or a check to make it pass. When the
+              cause is outside the repository (a new advisory, an upstream release, a changed tool),
+              make the narrowest change the rules allow and say why.
+            - Run the failing commands again until they pass. Run every command in the foreground and
+              wait for it to finish; the job ends when you answer.
+            - Commit with exactly:
+                git -c user.name='claude[bot]' -c user.email='41898282+claude[bot]@users.noreply.github.com' \
+                  commit --author 'mizorewww <aac6fef@icloud.com>' \
+                  --trailer 'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>'
+              in the repository's commit style. Do not push; the workflow pushes your commits.
+
+            Return `fixed`: true only when every failing check passes on your final commit. `title`
+            names the fix as a pull request title. `summary` is posted as the maintainer: what failed,
+            why, what you changed, and what you ran. Write plainly and do not sign it.
+      - name: Push and open the fix as the maintainer
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ secrets.MAINTAINER_TOKEN }}
+          OUTPUT: ${{ steps.claude.outputs.structured_output }}
+          START: ${{ steps.start.outputs.sha }}
+        run: |
+          summary=$(jq -r '.summary // empty' <<<"$OUTPUT")
+          printf '%s\n\n<sub>Automated CI fix by Claude Code ([run](%s)).</sub>\n' \
+            "${summary:-The fix did not finish; see the run log.}" \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > "$RUNNER_TEMP/summary.md"
+          cat "$RUNNER_TEMP/summary.md"
+          if [ "$(git rev-parse HEAD)" = "$START" ]; then
+            echo "No commit; nothing to push."
+            exit 0
+          fi
+          target=$BRANCH
+          [ "$BRANCH" != main ] || target="ci-fix/$RUN_ID"
+          # Bypass the read-only credentials the Claude action configured for this checkout.
+          git -c credential.helper= -c http.https://github.com/.extraheader= \
+            push -q "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git" "HEAD:refs/heads/$target"
+          if [ "$BRANCH" = main ]; then
+            # REST, not `gh pr create`: its GraphQL calls need read:org, which the token lacks.
+            title=$(jq -r '.title // empty' <<<"$OUTPUT")
+            gh api "repos/$GITHUB_REPOSITORY/pulls" -f base=main -f head="$target" \
+              -f title="${title:-Fix CI on main}" -F body=@"$RUNNER_TEMP/summary.md" --jq .html_url
+          else
+            pr=$(gh api "repos/$GITHUB_REPOSITORY/pulls?head=${GITHUB_REPOSITORY%%/*}:$BRANCH" --jq '.[0].number')
+            gh api "repos/$GITHUB_REPOSITORY/issues/$pr/comments" -F body=@"$RUNNER_TEMP/summary.md" --silent
+          fi
