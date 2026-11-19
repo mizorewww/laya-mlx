@@ -95,8 +95,10 @@ def approved_pr(sha):
         if pr["head"]["sha"] != sha or pr["draft"]:
             continue
         reviews = api("GET", f"repos/{REPO}/pulls/{pr['number']}/reviews?per_page=100")
-        if any(r["user"]["login"] == owner and r["state"] == "APPROVED" and r["commit_id"] == sha
-               for r in reviews):
+        if any(
+            r["user"]["login"] == owner and r["state"] == "APPROVED" and r["commit_id"] == sha
+            for r in reviews
+        ):
             return pr
     return None
 
@@ -212,8 +214,12 @@ def main():
         tries = sum("Automated CI fix" in c["body"] for c in comments)
         if tries >= MAX_FIX_COMMITS:
             done(f"#{adopted['number']} had {tries} fixes; leaving it to the maintainer.")
-        output(action="fix", branch=branch, head_repo=adopted["head"]["repo"]["full_name"],
-               pr=adopted["number"])
+        output(
+            action="fix",
+            branch=branch,
+            head_repo=adopted["head"]["repo"]["full_name"],
+            pr=adopted["number"],
+        )
         done(f"Claude fixes #{adopted['number']}.")
     if branch.startswith("renovate/"):
         if PORT_WORKFLOW:
