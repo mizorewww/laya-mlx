@@ -1,7 +1,7 @@
 # Upstream compatibility
 
-Host behavior follows [NandhaKishorM/laya](https://github.com/NandhaKishorM/laya) **v0.4.37**
-(`d1282e791d71e92f24f816ff3836e4fd1c2ded4a`). CI checks that commit out into `.upstream`, runs its
+Host behavior follows [NandhaKishorM/laya](https://github.com/NandhaKishorM/laya) **v0.5.1**
+(`090c540ec4cd0e5c71d539d952f0250e97399fcb`). CI checks that commit out into `.upstream`, runs its
 unchanged host suites against this package, and audits the public API against it. This page is
 the current record; what each release changed is in the [changelog](../CHANGELOG.md).
 
@@ -19,7 +19,7 @@ evaluation, CLI, HTTP, MCP and the framework integrations) is upstream's host co
 - `backend` and `dtype_for()` report MLX. `set_backend()` raises; TileLang `accelerate()` returns
   `False` (raises with `strict=True`).
 - `embed_fn_from_agent` validates `tok`/`model.encoder` before importing MLX and keeps native mean
-  pooling. Like [upstream's tokenizer call](https://github.com/NandhaKishorM/laya/blob/d1282e791d71e92f24f816ff3836e4fd1c2ded4a/laya/shortlist.py#L271-L278),
+  pooling. Like [upstream's tokenizer call](https://github.com/NandhaKishorM/laya/blob/090c540ec4cd0e5c71d539d952f0250e97399fcb/laya/shortlist.py#L271-L278),
   it truncates through the tokenizer, preserving special tokens, on a private copy of it.
   The native keyword `bucket_by_length=True` groups similar lengths within `batch_size` and
   restores input order, reducing padding for long queries mixed with short labels. It defaults
@@ -39,6 +39,8 @@ These exist upstream and are refused by name here rather than emulated:
 | PyTorch/CUDA/TileLang backends, `torch.compile` controls, ONNX (`onnx_path`, `ONNXAgent`) | `ValueError` naming official laya |
 | Training and fine-tuning CLI | Not shipped |
 | vegaml engine: `Agent(vegaml=...)`, `load(vegaml=...)`, `VegaAgent`, `laya.vega`, `laya.video`, `laya.policy` | `vegaml=None`/`False` are accepted; any other value raises `ValueError`. `VegaAgent` is not exported and `vegaml`/`cryptography` are not dependencies |
+| vega as the default engine (0.5.0): `Agent()`/`load()` with no checkpoint named build `VegaAgent` when vegaml is importable | `Agent()`, `load()` and `load(None)` load the classic `convaiinnovations/laya` checkpoint, which is upstream's own fallback without vegaml. `wants_vega()` is ported and answers `True` only for an explicit `vegaml=`, which is then refused. Upstream's "pip install -U laya brings vega" warning is not emitted, since that install would not change this package |
+| Continuous learning: `laya.Learner`, `laya.learn` (a re-export of `vegaml.learn`) | Not exported; it reads with vegaml's reader, not the MLX encoder |
 | Router vega lane built by the Router (`Router(vega=True)`, a reader name, or `"auto"` with vegaml installed) | `"auto"` never turns the lane on. `vega=True` raises `ImportError`. A reader name routes like upstream but raises `ImportError` when loaded |
 | CPU sliding-window and packed-head fast paths in `DecisionModel`, `LAYA_CUDA_AMP` parsing | PyTorch execution details; the MLX model is unchanged |
 | `agno<4` | The extra still pins `agno<2`; newer Agno majors were not tested here |
@@ -50,10 +52,10 @@ media arguments raise `ValueError`, and `laya-mlx-serve` and `RemoteRouter` refu
 
 ## Deliberate divergences
 
-These fix defects that upstream v0.4.37 still has. Each keeps upstream's public API and is pinned
+These fix defects that upstream v0.5.1 still has. Each keeps upstream's public API and is pinned
 by its own regression tests.
 
-| Behavior | Upstream v0.4.37 | MLX | Tests |
+| Behavior | Upstream v0.5.1 | MLX | Tests |
 |---|---|---|---|
 | Long-text window tokens | Decodes and re-encodes each window, which can add tokens and truncate its tail | Window objects reuse their original tokens; plain strings returned by hooks are re-encoded. Attribution still follows upstream's text-equality check | `tests/test_window_embedding_integrity.py` |
 | Embedding cache invalidation | In-flight embeddings can repopulate a cleared cache | A generation counter prevents old calls from writing into the new cache | `tests/test_window_embedding_integrity.py` |
@@ -63,25 +65,34 @@ by its own regression tests.
 
 When an upstream release fixes one of these, adopt upstream's version and remove the row.
 
-## v0.4.35 → v0.4.37 file inventory
+## v0.4.37 → v0.5.1 file inventory
 
-`git diff v0.4.35 v0.4.37 -- laya tests` touches 1 file (1 addition, 1 deletion). Across v0.4.36
-and v0.4.37 upstream changed only its README (a Studio section), packaging versions and the Nix
-package; nothing in the host code or tests this package mirrors changed.
+`git diff v0.4.37 v0.5.1 -- laya tests` touches 10 files (v0.4.38, v0.5.0 and v0.5.1). Upstream
+adds continuous learning (`laya.Learner`, from vegaml 0.17), makes vega the default engine for
+`laya.Agent()`/`laya.load()` with no checkpoint named, requires `questions.json` in signed policy
+manifests, and makes a serve test follow the installed uvicorn's log-level casing.
 
 | Upstream file | Port | Scope |
 |---|---|---|
-| `laya/__init__.py` | — | Version bump; not ported. |
+| `laya/agent.py` | `laya_mlx/agent.py` | `wants_vega()` ported for this distribution (no engine, so only an explicit `vegaml=` asks for vega); `load(model_id_or_path=None)` resolves to the classic default. The `_AgentMeta` dispatch to `VegaAgent` is not ported. |
+| `laya/serve.py` | `laya_mlx/serve.py` | `_resolve_log_level` docstring on uvicorn casing; no code change. |
+| `laya/__init__.py` | — | Version bump and the `Learner` export; `Learner` is classified backend-specific in the API audit. |
+| `laya/learn.py` | — | New vegaml re-export; not ported. |
+| `laya/policy.py`, `laya/vega.py` | — | Signed-policy and vega engine changes; neither module is shipped. |
+| `tests/test_serve.py` | Runs unchanged through `tests/test_official_host.py` | uvicorn-version-aware log-level witness. |
+| `tests/test_confidence.py` | Runs unchanged | Comment line numbers only. |
+| `tests/test_policy.py`, `tests/test_vega.py` | — | Cover modules not shipped here. |
 
-The host files were last merged three-way at v0.4.34. Changes to upstream's other SDKs, training
-and research tools, notebooks, deployment and packaging files are outside this package.
+`tests/test_upstream_051.py` pins the `load()` default, `wants_vega()` and the absent `Learner`
+without MLX. Changes to upstream's README, Rust SDK, funding files, Nix package and packaging are
+outside this package.
 
 ## How upstream assertions run
 
 `tests/test_official_host.py` runs 34 pinned upstream suites through
 `scripts/run_official_test.py`, which rewrites the `laya` namespace and mock targets and nothing
 else: assertions, expected values, public model names and timing thresholds are upstream's. This pin
-adds and changes no suites.
+adds no suites; `test_serve.py` changed and runs unchanged.
 `tests/test_official_contract.py` adds AST equality for host methods, differential runs against
 upstream on identical inputs, and the native MCP suite.
 The AST checks normalize only the two token-preserving expressions in `_encode_state` and
@@ -116,17 +127,17 @@ same assertion failed against unmodified upstream on the same runner
 are unchanged here; CI runs host contracts in their own process first and, on failure, reruns the
 original upstream test for comparison.
 
-## Validation for 0.7.2
+## Validation for 0.8.0
 
 Automated port run (macOS arm64 runner, `LAYA_MLX_TEST_DEVICE=cpu`) on the release source:
 
 | Check | Result |
 |---|---|
-| `pytest -q tests/test_official_host.py tests/test_official_contract.py` | 77 passed (34 upstream suite wrappers plus contract tests) |
+| `pytest -q tests/test_official_host.py tests/test_official_contract.py` | 76 passed, 1 failed: the `serve` suite's idle-window timing test (see "Idle-window timing"), which fails the same way against unmodified upstream v0.5.1 and on the commit before this port |
 | `pytest -q tests/test_parallel_layout.py` | 11 passed |
 | `pytest -q tests/test_runtime.py` | 25 passed |
-| Remaining native and integration tests | 256 passed, 1 skipped |
-| `scripts/audit_public_api.py --package laya_mlx` | 351 surface entries, 0 unclassified differences |
+| Remaining native and integration tests | 263 passed, 1 skipped |
+| `scripts/audit_public_api.py --package laya_mlx` | 353 surface entries, 0 unclassified differences |
 | `ruff check .`, `ruff format --check .`, `compileall` | Passed |
 | `python -m build` | Built wheel and sdist |
 
@@ -134,7 +145,7 @@ Real-checkpoint validation (`python -m benchmarks.validate --repeats 100`) and t
 test from a clean inference-only environment were not run for this release; they run locally on
 Apple silicon. The last real-checkpoint run was for 0.7.0 against the v0.4.34 reference: 63/63
 argmax agreement for all three checkpoints in FP32 and FP16, 100 stable calls each. Neither the
-model code nor the upstream engine changed between v0.4.34 and v0.4.37.
+model code nor the upstream engine changed between v0.4.34 and v0.5.1.
 
 Performance and memory were not re-measured; [BENCHMARKS.md](../BENCHMARKS.md) describes the
 revisions it names. Remote CI runs the same suites on Linux (host only) and macOS 26.
@@ -145,8 +156,9 @@ revisions it names. Remote CI runs the same suites on Linux (host only) and macO
 uv venv .venv
 uv pip install --python .venv/bin/python -e '.[dev,serve,mcp,structured]'
 git clone https://github.com/NandhaKishorM/laya .upstream
-git -C .upstream checkout d1282e791d71e92f24f816ff3836e4fd1c2ded4a
-.venv/bin/pytest -q tests/test_official_host.py tests/test_upstream_0417.py tests/test_upstream_0434.py
+git -C .upstream checkout 090c540ec4cd0e5c71d539d952f0250e97399fcb
+.venv/bin/pytest -q tests/test_official_host.py tests/test_upstream_0417.py tests/test_upstream_0434.py \
+  tests/test_upstream_051.py
 .venv/bin/python scripts/audit_public_api.py --package laya_mlx
 ```
 

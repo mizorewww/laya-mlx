@@ -117,6 +117,24 @@ def _refuse_vegaml(vegaml):
         )
 
 
+def wants_vega(args=(), kwargs=None) -> bool:
+    """Whether a `laya.Agent(...)` / `laya.load(...)` call asks for vega.
+
+    Upstream's rule since 0.5.0: vega is the default unless the call names a checkpoint, says
+    `vegaml=False` or passes a classic-only option, and the default falls back to the classic
+    encoder when vegaml is not importable. This distribution ships no vegaml engine, so it is always
+    in that fallback: only an explicit `vegaml=` asks for vega (and is refused by `Agent`/`load`),
+    and the default is the MLX checkpoint, without upstream's "pip install -U laya" warning.
+    """
+    kwargs = kwargs or {}
+    choice = kwargs.get("vegaml")
+    if choice is False:
+        return False
+    if choice is not None:
+        return True
+    return False
+
+
 class Agent(RuntimeMixin):
     @property
     def config(self):
@@ -413,7 +431,7 @@ RLAgent = Agent
 
 
 def load(
-    model_id_or_path="convaiinnovations/laya",
+    model_id_or_path=None,
     device=None,
     token=None,
     subfolder=None,
@@ -440,6 +458,10 @@ def load(
     if onnx_path is not None:
         raise ValueError("ONNX inference requires official laya; this distribution uses MLX")
     _refuse_vegaml(vegaml)
+    # Upstream's 0.5.0 default (no checkpoint named: vega) needs vegaml's engine, which this
+    # distribution does not ship, so no checkpoint named is the classic default as before.
+    if model_id_or_path is None:
+        model_id_or_path = "convaiinnovations/laya"
     from .router import DEFAULT_MODELS, canonical_name
 
     name = canonical_name(str(model_id_or_path))

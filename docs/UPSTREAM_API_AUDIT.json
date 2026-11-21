@@ -1,5 +1,5 @@
 {
-  "upstream_revision": "d1282e791d71e92f24f816ff3836e4fd1c2ded4a",
+  "upstream_revision": "090c540ec4cd0e5c71d539d952f0250e97399fcb",
   "package": "laya_mlx",
   "scope": "public functions, explicitly defined public class methods, inherited Agent host methods and root __all__; annotations use native tensor types where needed",
   "rows": [
@@ -31,6 +31,11 @@
     {
       "module": "_eval_policy.py",
       "callable": "check_policy",
+      "status": "signature_matches"
+    },
+    {
+      "module": "agent.py",
+      "callable": "wants_vega",
       "status": "signature_matches"
     },
     {
@@ -1250,6 +1255,11 @@
       "status": "signature_matches"
     },
     {
+      "module": "learn.py",
+      "status": "backend_specific_module",
+      "reason": "PyTorch training, execution backend, compiler, ONNX or vegaml implementation; native runtime retained"
+    },
+    {
       "module": "mcp/device.py",
       "callable": "env_device",
       "status": "signature_matches"
@@ -1806,6 +1816,7 @@
   ],
   "missing_root_exports": [],
   "backend_specific_root_exports": [
+    "Learner",
     "VegaAgent"
   ],
   "failures": [],
