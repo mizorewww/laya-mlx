@@ -3,6 +3,23 @@
 Each release names the upstream [Laya](https://github.com/NandhaKishorM/laya) revision whose host
 behavior it follows. Detailed records live in [docs/](docs/README.md).
 
+## 0.8.0 — 2026-11-21
+
+Follows upstream **v0.5.1** (`090c540e`). [Compatibility record](docs/UPSTREAM.md).
+
+- **`load()` takes no checkpoint named:** `model_id_or_path` now defaults to `None`, as upstream,
+  and still loads `convaiinnovations/laya`. Upstream 0.5.0 makes vega the default engine when no
+  checkpoint is named; laya-mlx does not include the vegaml engine, so `Agent()` and `load()` keep
+  the classic checkpoint (upstream's own behavior without vegaml) and do not warn.
+- `laya_mlx.agent.wants_vega()` is ported: it answers `True` only for an explicit `vegaml=`, which
+  `Agent` and `load` still refuse.
+- Upstream's continuous learner (`laya.Learner`, a vegaml re-export) is not included.
+- Upstream's `serve` suite now follows the installed uvicorn's log-level casing; it runs unchanged.
+  Upstream's signed-policy hardening applies to `laya.policy`, which is not shipped.
+- Validation: host, contract and native tests and the public API audit on the release source.
+  Upstream's idle-window timing test failed on the runner, as it does against unmodified upstream.
+  Real-checkpoint validation was not re-run; no model or engine code changed.
+
 ## 0.7.2 — 2026-11-19
 
 Follows upstream **v0.4.37** (`d1282e79`). [Compatibility record](docs/UPSTREAM.md).
