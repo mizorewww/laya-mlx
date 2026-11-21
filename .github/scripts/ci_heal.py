@@ -206,6 +206,15 @@ def main():
     if failed and not real and run["run_attempt"] < MAX_ATTEMPTS:
         api("POST", f"repos/{REPO}/actions/runs/{RUN_ID}/rerun-failed-jobs")
         done("Reran " + ", ".join(j["name"] for j in failed) + ": they did not fail in a step.")
+    # A step failure is retried once before anyone changes code: timing-sensitive tests fail
+    # now and then on loaded runners. Renovate's own commit still needs its port, so not there.
+    unported = (
+        branch.startswith("renovate/")
+        and "Co-Authored-By: Claude" not in run["head_commit"]["message"]
+    )
+    if failed and run["run_attempt"] == 1 and not unported:
+        api("POST", f"repos/{REPO}/actions/runs/{RUN_ID}/rerun-failed-jobs")
+        done("Reran " + ", ".join(j["name"] for j in failed) + " once to rule out a flaky failure.")
     print("Failed in a step: " + ", ".join(j["name"] for j in real or failed))
 
     if adopted:
