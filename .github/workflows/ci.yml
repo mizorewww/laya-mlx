@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: NandhaKishorM/laya
-          ref: d1282e791d71e92f24f816ff3836e4fd1c2ded4a # v0.4.37
+          ref: 090c540ec4cd0e5c71d539d952f0250e97399fcb # v0.5.1
           path: .upstream
       - uses: actions/setup-python@v5
         with:
@@ -43,7 +43,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: NandhaKishorM/laya
-          ref: d1282e791d71e92f24f816ff3836e4fd1c2ded4a # v0.4.37
+          ref: 090c540ec4cd0e5c71d539d952f0250e97399fcb # v0.5.1
           path: .upstream
       - uses: actions/setup-python@v5
         with:
