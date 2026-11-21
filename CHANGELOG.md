@@ -3,6 +3,17 @@
 Each release names the upstream [Laya](https://github.com/NandhaKishorM/laya) revision whose host
 behavior it follows. Detailed records live in [docs/](docs/README.md).
 
+## 0.8.1 — 2026-11-21
+
+Follows upstream **v0.5.2** (`e150aa92`). [Compatibility record](docs/UPSTREAM.md).
+
+- No change in behavior. Upstream v0.5.2 adds `laya.Escalator` and `laya.vllm_teacher`,
+  re-exports of vegaml 0.18's teacher for its continuous learner; like `laya.Learner`, they read
+  with vegaml's reader and are not included.
+- Upstream's signed-policy tests nest their JSON deeper; `laya.policy` is not shipped.
+- Validation: host, contract and native tests and the public API audit on the release source.
+  Real-checkpoint validation was not re-run; no model or engine code changed.
+
 ## 0.8.0 — 2026-11-21
 
 Follows upstream **v0.5.1** (`090c540e`). [Compatibility record](docs/UPSTREAM.md).

@@ -1,5 +1,5 @@
 {
-  "upstream_revision": "090c540ec4cd0e5c71d539d952f0250e97399fcb",
+  "upstream_revision": "e150aa92a0d4059ac621875b39b620847cf1b88a",
   "package": "laya_mlx",
   "scope": "public functions, explicitly defined public class methods, inherited Agent host methods and root __all__; annotations use native tensor types where needed",
   "rows": [
@@ -1816,8 +1816,10 @@
   ],
   "missing_root_exports": [],
   "backend_specific_root_exports": [
+    "Escalator",
     "Learner",
-    "VegaAgent"
+    "VegaAgent",
+    "vllm_teacher"
   ],
   "failures": [],
   "passed": true
