@@ -1,8 +1,9 @@
 name: Upstream port
 
 # Renovate opens renovate/upstream-laya when NandhaKishorM/laya tags a release
-# (see renovate.json). This job ports that release with Claude Code and pushes
-# the result to the same branch, so CI runs on it and a human merges and tags.
+# (see renovate.json). This job ports that release with Claude Code, which only
+# commits; the job pushes the result as the maintainer, so CI runs on it, and labels
+# it port-ready when complete, for upstream-release.yml to merge and tag.
 # When CI fails on the port's commit, ci-heal.yml starts this again with fix_run:
 # Claude fixes the failure, or the failed jobs are rerun when it is not the port's.
 
@@ -46,8 +47,16 @@ jobs:
       - id: gate
         env:
           FIX_RUN: ${{ inputs.fix_run }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           run=true mode=port
+          # CI runs twice per push (push and pull_request), so a fix can be asked for twice;
+          # the second request finds the first one's commit and has nothing to do.
+          if [ -n "$FIX_RUN" ] && [ "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$FIX_RUN" --jq .head_sha)" != "$(git rev-parse HEAD)" ]; then
+            echo "Run $FIX_RUN is not on the branch head any more."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           fixes=$(git log --format=%B origin/main..HEAD | grep -c '^Co-Authored-By: Claude' || true)
           if [ -n "$FIX_RUN" ] && [ "$fixes" -gt 0 ]; then
             mode=fix
@@ -100,27 +109,29 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - run: python -m pip install -e '.[dev,reference,demo,serve,mcp,structured,llamaindex]'
       - uses: anthropics/claude-code-action@v1
+        id: claude
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # The port works on public code only; keep its transcript in the log.
           show_full_output: true
-          # Push with GITHUB_TOKEN; the next step starts CI on the result.
+          # Read-only for Claude: the next step pushes, labels and comments as the maintainer.
           github_token: ${{ secrets.GITHUB_TOKEN }}
           # Renovate (renovate.yml) opens the PR as the maintainer, on a branch in this repository.
           restrict_untrusted_prs: "false"
-          claude_args: >-
+          claude_args: |
             --model claude-opus-5-5
             --max-turns 400
             --allowedTools Bash,Read,Edit,Write,Glob,Grep,TodoWrite
+            --json-schema '{"type":"object","required":["ready","summary"],"properties":{"ready":{"type":"boolean"},"summary":{"type":"string"}}}'
           prompt: |
             Port upstream NandhaKishorM/laya ${{ steps.range.outputs.new_tag }} into this repository.
             ${{ needs.gate.outputs.mode == 'fix' && format('
             The port is already committed on the branch, but CI run {0} failed on it. Fix that
             failure: `gh run view {0} --log-failed` shows what failed. Find the cause, fix it as
             .github/upstream-port.md allows (never by weakening a check or a test), run its
-            checks again, then commit, push, label and comment as it says. If the failure is
-            not the port''s (a runner, network or flaky failure), change nothing and comment
-            that; the workflow then reruns the failed jobs.
+            checks again, then commit and report as it says. If the failure is not the port''s
+            (a runner, network or flaky failure), change nothing and say so; the workflow then
+            reruns the failed jobs.
             ', inputs.fix_run) || '' }}
 
             - Repository: ${{ github.repository }}, branch ${{ env.BRANCH }} (already checked out), pull request #${{ steps.range.outputs.pr }}.
@@ -131,19 +142,35 @@ jobs:
             Read .github/upstream-port.md and follow it exactly. In that file OLD/NEW stand for the commits
             above and OLD_VERSION for the current port's version without the leading v.
             Run every command in the foreground and wait for it to finish; the job ends when you answer.
-      # A push with GITHUB_TOKEN starts no workflow, so run CI on the port explicitly,
-      # as the maintainer: a run GITHUB_TOKEN starts would not start upstream-release.yml
-      # (or a fix here) when it completes.
-      - name: Run CI on the port
+      - name: Push and report as the maintainer
         if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ secrets.MAINTAINER_TOKEN }}
-          FAILED_RUN: ${{ needs.gate.outputs.mode == 'fix' && inputs.fix_run || '' }}
+          OUTPUT: ${{ steps.claude.outputs.structured_output }}
+          START: ${{ steps.range.outputs.start }}
+          PR: ${{ steps.range.outputs.pr }}
+          MODE: ${{ needs.gate.outputs.mode }}
+          FAILED_RUN: ${{ inputs.fix_run }}
         run: |
-          git fetch -q origin "$BRANCH"
-          if [ "$(git rev-parse "origin/$BRANCH")" != "${{ steps.range.outputs.start }}" ]; then
-            gh workflow run ci.yml --ref "$BRANCH"
-          elif [ -n "$FAILED_RUN" ]; then
+          if [ "$(git rev-parse HEAD)" != "$START" ]; then
+            # As the maintainer, so the push may change workflow files and starts CI (and
+            # upstream-release.yml after it); bypass the checkout's read-only credentials.
+            git -c credential.helper= -c http.https://github.com/.extraheader= \
+              push -q "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git" "HEAD:refs/heads/$BRANCH"
+          elif [ "$MODE" = fix ]; then
             # Nothing to change: the failure was not the port's, so try the failed jobs again.
             gh run rerun "$FAILED_RUN" --failed
+          fi
+          [ "$MODE" = fix ] && kind="CI fix" || kind="port"
+          summary=$(jq -r '.summary // empty' <<<"$OUTPUT")
+          printf '%s\n\n<sub>Automated %s by Claude Code ([run](%s)).</sub>\n' \
+            "${summary:-The $kind did not finish; see the run log.}" "$kind" \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > "$RUNNER_TEMP/summary.md"
+          gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -F body=@"$RUNNER_TEMP/summary.md" --silent
+          # REST, not `gh pr edit`: its GraphQL query needs read:org, which the token lacks.
+          labels="repos/$GITHUB_REPOSITORY/issues/$PR/labels"
+          if [ "$(jq -r '.ready // false' <<<"$OUTPUT")" = true ]; then
+            gh api "$labels" -f 'labels[]=port-ready' --silent
+          else
+            gh api -X DELETE "$labels/port-ready" --silent 2>/dev/null || true
           fi

@@ -99,20 +99,19 @@ existing style:
 git commit --author "mizorewww <aac6fef@icloud.com>" \
   --trailer "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" \
   -m "Port upstream v0.4.35 and prepare 0.7.1" -m "<what changed and why>"
-git push origin HEAD
 ```
 
-Do not tag, publish, edit release.yml or merge yourself. Then:
+Do not push, label, comment, tag, publish, edit release.yml or merge yourself: the workflow pushes
+your commits as the maintainer (workflow files included), posts your summary on the pull request
+and labels it `port-ready` when you answer `ready: true`. When CI passes on that commit,
+[upstream-release.yml](workflows/upstream-release.yml) squash-merges the PR, tags the new version
+and runs the release workflow, which publishes to PyPI.
 
-- **Port complete** (every check in step 4 passed, nothing left undone): run
-  `gh pr edit <number> --add-label port-ready`, after the push. When CI passes on that commit,
-  [upstream-release.yml](workflows/upstream-release.yml) squash-merges the PR, tags the new version
-  and runs the release workflow, which publishes to PyPI.
-- **Port incomplete or any check failing**: commit only the parts that pass, do not add the
-  label, and the PR waits for the maintainer.
+- **Port complete** (every check in step 4 passed, nothing left undone): answer `ready: true`.
+- **Port incomplete or any check failing**: commit only the parts that pass and answer
+  `ready: false`; the PR waits for the maintainer.
 
-Either way, finish with one `gh pr comment` on the pull request that states: the release
-classification, what was ported, any divergences added or removed, the checks you ran with their
-results, whether you labeled it `port-ready`, and what is left for the maintainer (always:
+The `summary` states: the release classification, what was ported, any divergences added or
+removed, the checks you ran with their results, and what is left for the maintainer (always:
 `python -m benchmarks.validate --repeats 100` and the wheel smoke test on Apple silicon, which
 an automated release skips).
