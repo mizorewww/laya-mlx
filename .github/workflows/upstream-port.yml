@@ -61,6 +61,9 @@ jobs:
           if [ -n "$FIX_RUN" ] && [ "$fixes" -gt 0 ]; then
             mode=fix
             [ "$fixes" -le 5 ] || run=false
+          elif [ "$fixes" -gt 0 ]; then
+            echo "The port is already on the branch; only a CI failure (fix_run) runs it again."
+            run=false
           fi
           { echo "run=$run"; echo "mode=$mode"; } >> "$GITHUB_OUTPUT"
 

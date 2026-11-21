@@ -64,14 +64,13 @@ def open_pr(branch):
 
 
 def port_busy(branch):
-    for status in ("queued", "in_progress", "waiting", "pending"):
-        runs = api("GET", f"repos/{REPO}/actions/workflows/{PORT_WORKFLOW}/runs?status={status}")
-        if any(
-            r["head_branch"] == branch or r["event"] == "workflow_dispatch"
-            for r in runs["workflow_runs"]
-        ):
-            return True
-    return False
+    # Recent runs unfiltered: the status filter misses a run dispatched seconds ago.
+    runs = api("GET", f"repos/{REPO}/actions/workflows/{PORT_WORKFLOW}/runs?per_page=20")
+    return any(
+        r["status"] != "completed"
+        and (r["head_branch"] == branch or r["event"] == "workflow_dispatch")
+        for r in runs["workflow_runs"]
+    )
 
 
 def start_port(branch, fix_run=""):
