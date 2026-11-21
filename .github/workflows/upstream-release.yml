@@ -64,6 +64,8 @@ jobs:
         run: |
           tag=v${{ steps.check.outputs.version }}
           sha=$(gh pr view ${{ steps.check.outputs.pr }} --json mergeCommit --jq .mergeCommit.oid)
+          # The squash commit was made after the checkout; fetch it before tagging.
+          git fetch -q origin main
           git tag "$tag" "$sha"
           git push origin "$tag"
           # A tag pushed with GITHUB_TOKEN starts no workflow; dispatch the release on it.
