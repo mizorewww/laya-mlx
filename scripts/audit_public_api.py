@@ -11,7 +11,7 @@ import json
 import subprocess
 from pathlib import Path
 
-PIN = "090c540ec4cd0e5c71d539d952f0250e97399fcb"
+PIN = "e150aa92a0d4059ac621875b39b620847cf1b88a"
 BACKEND_MODULES = {
     "train.py",
     "train_cli.py",
@@ -25,7 +25,7 @@ BACKEND_MODULES = {
     "policy.py",
     "learn.py",
 }
-BACKEND_EXPORTS = {"VegaAgent", "Learner"}
+BACKEND_EXPORTS = {"VegaAgent", "Learner", "Escalator", "vllm_teacher"}
 BACKEND_CALLABLES = {
     "uses_parallel_layout",
     "parallel_option_masks",
