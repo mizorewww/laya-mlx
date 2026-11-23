@@ -182,6 +182,9 @@ class ModernBert(nn.Module):
         self.final_norm = nn.LayerNorm(cfg.hidden_size, eps=cfg.norm_eps, bias=cfg.norm_bias)
 
     def __call__(self, input_ids, attention_mask, position_ids=None, option_ids=None):
+        return self._encode(input_ids, attention_mask, position_ids, option_ids, pipeline=False)
+
+    def _encode(self, input_ids, attention_mask, position_ids, option_ids, *, pipeline):
         if (position_ids is None) != (option_ids is None):
             raise ValueError("position_ids and option_ids must be provided together")
         x = self.embeddings(input_ids)
@@ -196,8 +199,14 @@ class ModernBert(nn.Module):
             masks = parallel_option_masks(
                 attention_mask, position_ids, option_ids, self.config.local_attention
             )
-        for layer in self.layers:
+        # Start Metal early, then double the chunk size to amortize submissions
+        # as the GPU accumulates enough queued work to overlap graph construction.
+        next_submit = 1 if pipeline else None
+        for depth, layer in enumerate(self.layers, 1):
             x = layer(x, masks[layer.attention_type], position_ids)
+            if depth == next_submit:
+                mx.async_eval(x, masks)
+                next_submit = 2 * depth + 1
         return self.final_norm(x)
 
 
@@ -285,6 +294,27 @@ class DecisionModel(nn.Module):
         if self.parallel != (option_ids is not None):
             raise ValueError("Batch option layout does not match checkpoint option_layout")
         h = self.encoder(input_ids, attention_mask, position_ids, option_ids)
+        return self._decision(h, attention_mask, marker_pos, marker_mask, qtype)
+
+    def _pipelined(
+        self,
+        input_ids,
+        attention_mask,
+        marker_pos,
+        marker_mask,
+        qtype,
+        position_ids=None,
+        option_ids=None,
+    ):
+        # Multi-sequence batches already keep Metal busy with the full graph.
+        if input_ids.shape[0] != 1 or position_ids is not None or option_ids is not None:
+            return self(
+                input_ids, attention_mask, marker_pos, marker_mask, qtype, position_ids, option_ids
+            )
+        h = self.encoder._encode(input_ids, attention_mask, None, None, pipeline=True)
+        return self._decision(h, attention_mask, marker_pos, marker_mask, qtype)
+
+    def _decision(self, h, attention_mask, marker_pos, marker_mask, qtype):
         h = h + self.type_emb(qtype)[:, None, :]
         # Only CLS and option markers are read after the final head layer. Keep
         # full attention, but omit unused output projections and token-wise FFNs.
