@@ -323,10 +323,11 @@ class DecisionModel(nn.Module):
         )
         h = self.head(h, attention_mask[:, None, None, :].astype(mx.bool_), positions)
         markers = h[:, 1:]
-        if self.parallel:
+        if self.parallel or mx.default_device() == mx.cpu:
             # Accumulate the one-channel projection in FP32. MLX 0.32 CPU FP16
             # matmul can mix adjacent rows here, breaking permutation equivariance
-            # even when every encoder/head hidden state is exactly equivariant.
+            # even when every encoder/head hidden state is exactly equivariant,
+            # and can read outside its input (SIGBUS) for a single short sequence.
             norm, hidden, activation, output = self.scorer.layers
             features = activation(hidden(norm(markers))).astype(mx.float32)
             logits = (
