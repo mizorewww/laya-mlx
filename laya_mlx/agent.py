@@ -246,7 +246,12 @@ class Agent(RuntimeMixin):
             self.model.eval()
             mx.eval(self.model.parameters())
         # Frozen inference instance: changing weights or module structure requires a new Agent.
-        self._inference = mx.compile(self.model) if compile else self.model
+        if compile:
+            self._inference = mx.compile(self.model)
+        elif self.device == mx.gpu and self.dtype == mx.float16 and not self.model.parallel:
+            self._inference = self.model._pipelined
+        else:
+            self._inference = self.model
         self._init_host(
             lang_temperatures=lang_temperatures,
             calibration=calibration,
