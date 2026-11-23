@@ -227,6 +227,7 @@ def main():
             branch=branch,
             head_repo=adopted["head"]["repo"]["full_name"],
             pr=adopted["number"],
+            sha=sha,
         )
         done(f"Claude fixes #{adopted['number']}.")
     if branch.startswith("renovate/"):

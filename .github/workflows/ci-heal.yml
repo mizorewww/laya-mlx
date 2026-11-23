@@ -34,6 +34,7 @@ jobs:
       branch: ${{ steps.triage.outputs.branch }}
       head_repo: ${{ steps.triage.outputs.head_repo }}
       pr: ${{ steps.triage.outputs.pr }}
+      sha: ${{ steps.triage.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -62,7 +63,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: ${{ env.HEAD_REPO }}
-          ref: ${{ env.BRANCH }}
+          # A pull request at exactly the commit the maintainer approved (ci_heal.py checks).
+          ref: ${{ needs.triage.outputs.sha || env.BRANCH }}
+          allow-unsafe-pr-checkout: ${{ needs.triage.outputs.pr != '' }}
           fetch-depth: 0
           persist-credentials: false
       - id: start

@@ -33,6 +33,8 @@ jobs:
   # A fix (fix_run) needs the port's commit on the branch, with at most five fixing
   # commits; without it the port runs from the start.
   gate:
+    # A pull request runs the port only when Renovate opened it, on its own branch.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.ref == 'renovate/upstream-laya'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
