@@ -216,7 +216,7 @@ class ModernBert(nn.Module):
         return self._encode(input_ids, attention_mask, position_ids, option_ids, pipeline=False)
 
     def _encode(
-        self, input_ids, attention_mask, position_ids, option_ids, *, pipeline, unpadded=False
+        self, input_ids, attention_mask, position_ids, option_ids, *, pipeline, block_local=False
     ):
         if (position_ids is None) != (option_ids is None):
             raise ValueError("position_ids and option_ids must be provided together")
@@ -238,12 +238,17 @@ class ModernBert(nn.Module):
         window = self.config.local_attention
         block_window = (
             window
-            if unpadded
+            if block_local
             and self.config.head_dim == 64
             and isinstance(window, int)
             and 0 <= window <= 128
             else None
         )
+        if block_window is not None:
+            # A padded query can outlive every valid key in its block.
+            masks["sliding_attention"] = masks["sliding_attention"] | mx.eye(
+                input_ids.shape[1], dtype=mx.bool_
+            )
         for depth, layer in enumerate(self.layers, 1):
             x = layer(
                 x,
@@ -352,16 +357,18 @@ class DecisionModel(nn.Module):
         qtype,
         position_ids=None,
         option_ids=None,
-        *,
-        unpadded=False,
     ):
-        # Multi-sequence batches already keep Metal busy with the full graph.
-        if input_ids.shape[0] != 1 or position_ids is not None or option_ids is not None:
+        if self.parallel or position_ids is not None or option_ids is not None:
             return self(
                 input_ids, attention_mask, marker_pos, marker_mask, qtype, position_ids, option_ids
             )
         h = self.encoder._encode(
-            input_ids, attention_mask, None, None, pipeline=True, unpadded=unpadded
+            input_ids,
+            attention_mask,
+            None,
+            None,
+            pipeline=input_ids.shape[0] == 1,
+            block_local=input_ids.shape[1] >= 768,
         )
         return self._decision(h, attention_mask, marker_pos, marker_mask, qtype)
 

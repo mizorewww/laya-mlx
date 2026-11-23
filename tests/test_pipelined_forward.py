@@ -61,7 +61,7 @@ def test_block_local_attention_keeps_keys_at_window_boundaries(length, window):
     np.testing.assert_allclose(np.asarray(actual), np.asarray(expected), rtol=1e-5, atol=1e-6)
 
 
-def test_unpadded_pipelined_forward_uses_block_local_attention(monkeypatch):
+def test_pipelined_forward_uses_block_local_attention(monkeypatch):
     import laya_mlx.model as model_module
 
     cfg = EncoderConfig.from_dict(
@@ -77,7 +77,7 @@ def test_unpadded_pipelined_forward_uses_block_local_attention(monkeypatch):
     mx.random.seed(0)
     model = DecisionModel(cfg, {"head_layers": 2, "act_costs": {"escalate": 0.5}})
     mx.eval(model.parameters())
-    length = 300
+    length = 768
     rng = np.random.default_rng(3)
     inputs = {
         "input_ids": mx.array(rng.integers(1, 128, (1, length)).astype(np.int32)),
@@ -95,7 +95,7 @@ def test_unpadded_pipelined_forward_uses_block_local_attention(monkeypatch):
         return local(*args)
 
     monkeypatch.setattr(model_module, "_local_attention", record)
-    actual = model._pipelined(**inputs, unpadded=True)
+    actual = model._pipelined(**inputs)
     assert calls == [128, 128]  # the two sliding-window layers
     for x, y in zip(actual, expected):
         np.testing.assert_allclose(np.asarray(x), np.asarray(y), rtol=1e-4, atol=1e-5)
