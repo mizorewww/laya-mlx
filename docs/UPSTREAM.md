@@ -29,6 +29,9 @@ evaluation, CLI, HTTP, MCP and the framework integrations) is upstream's host co
   reads. This preserves the mathematical dependencies; changed projection shapes can affect
   floating-point rounding. `tests/test_selected_head.py` checks selected outputs against the full
   head, including zero head layers, padding, FP32/FP16 and compilation.
+- For long, unpadded single-sequence FP16 Metal inference, the encoder limits each local
+  attention block to the keys within its bidirectional window. It retains the existing
+  inclusive per-query mask and uses MLX attention for each block.
 
 ## Not included
 
