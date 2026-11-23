@@ -279,6 +279,18 @@ class Agent(RuntimeMixin):
 
         with mx.stream(self.device):
             tensors = {k: mx.array(v) for k, v in batch.items()}
+            mask = batch.get("attention_mask")
+            # For long single rows, prove there is no padding on the host.
+            if (
+                type(mask) is np.ndarray
+                and mask.dtype == np.bool_
+                and mask.ndim == 2
+                and mask.shape[0] == 1
+                and mask.shape[1] >= 768
+                and self._inference == getattr(self.model, "_pipelined", None)
+                and mask.all()
+            ):
+                tensors["unpadded"] = True
             result = self._inference(**tensors)
             mx.eval(result)
         return result
