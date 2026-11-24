@@ -401,7 +401,9 @@ class DecisionModel(nn.Module):
         top = mx.sort(p, axis=-1)[:, -2:]
         features = mx.stack([top[:, 1], top[:, 1] - top[:, 0], entropy, k / 255.0], axis=-1)
         pooled = mx.concatenate([h[:, 0].astype(mx.float32), features], axis=-1)
-        if self.parallel and mx.default_device() == mx.cpu:
+        if mx.default_device() == mx.cpu and (
+            self.parallel or self.act_head.layers[0].weight.dtype != mx.float32
+        ):
             # Do not cast back to FP16 at the action head: its narrow CPU
             # projections can hit the same native half-precision failure.
             first, activation, last = self.act_head.layers
