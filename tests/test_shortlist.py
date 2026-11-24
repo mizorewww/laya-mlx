@@ -13,7 +13,7 @@ import pytest
 import laya_mlx
 from laya_mlx import Agent
 from laya_mlx.common import render_options
-from laya_mlx.shortlist import embed_fn_from_agent, predict_shortlist, shortlist_choice
+from laya_mlx.shortlist import _embeddings, embed_fn_from_agent, predict_shortlist, shortlist_choice
 
 
 class TableEmbed:
@@ -120,6 +120,22 @@ def test_topk_nan_vector_sorts_behind_a_finite_match():
         {"pay me": [1.0, 0.0], "alpha": [float("nan"), float("nan")], "beta": [1.0, 0.0]}
     )
     assert shortlist_choice("pay me", {"alpha": None, "beta": None}, nan_embed, k=1) == ["beta"]
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_embedding_sanitation_preserves_layout_and_input_storage(dtype):
+    raw = np.array([[1.0, 2.0, 3.0, 4.0], [np.nan, np.inf, -np.inf, -0.0]], dtype=dtype, order="F")
+    raw.flags.writeable = False
+    original = raw.tobytes(order="F")
+
+    result = _embeddings(lambda texts: raw, ["query", "option"])
+
+    expected = np.array([[1.0, 2.0, 3.0, 4.0], [0.0, 0.0, 0.0, -0.0]], order="F")
+    assert result.dtype == np.float64
+    assert result.flags.f_contiguous
+    assert result.tobytes(order="F") == expected.tobytes(order="F")
+    assert not np.shares_memory(result, raw)
+    assert raw.tobytes(order="F") == original
 
 
 # --------------------------------------------------------------------- list criteria and instructions
