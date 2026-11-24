@@ -126,7 +126,7 @@ deaths. [Demo guide](https://github.com/mizorewww/laya-mlx/blob/main/docs/SNAKE_
 
 This is an independent port, not an official Convai Innovations release. Prompt formatting,
 calibration, routing, output schema and host APIs follow
-[NandhaKishorM/laya](https://github.com/NandhaKishorM/laya) **v0.5.2**; the encoder and decision
+[NandhaKishorM/laya](https://github.com/NandhaKishorM/laya) **v0.5.3**; the encoder and decision
 heads are reimplemented in MLX. CUDA, ONNX, PyTorch backend controls, the vegaml engine and
 training are out of scope.
 RLCD training and fine-tuning stay upstream.

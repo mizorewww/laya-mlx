@@ -15,7 +15,7 @@ source .venv/bin/activate
 
 # Upstream reference used by parity and contract tests (the commit CI pins):
 gh repo clone NandhaKishorM/laya .upstream
-git -C .upstream checkout e150aa92a0d4059ac621875b39b620847cf1b88a
+git -C .upstream checkout abefd7d955008a59287b0fa8c5753cb323307693
 ```
 
 Model weights are downloaded separately and are never committed.

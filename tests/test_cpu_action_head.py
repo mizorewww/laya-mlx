@@ -1,4 +1,4 @@
-"""The action head accumulates in FP32 on the CPU for both option layouts."""
+"""Sequential half-precision action heads accumulate in FP32 on the CPU."""
 
 import mlx.core as mx
 import mlx.nn as nn

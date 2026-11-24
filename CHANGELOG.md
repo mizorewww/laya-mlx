@@ -3,6 +3,24 @@
 Each release names the upstream [Laya](https://github.com/NandhaKishorM/laya) revision whose host
 behavior it follows. Detailed records live in [docs/](docs/README.md).
 
+## 0.9.0 — 2026-11-23
+
+Follows upstream **v0.5.3** (`abefd7d9`). [Compatibility record](docs/UPSTREAM.md).
+
+- **Short unaccented Spanish and Portuguese route multilingual:** language detection gains
+  upstream's unaccented and closed-class Spanish and Portuguese stopwords (`puedo`, `estoy`,
+  `despues`, `faco`, `qual`, ...), so accent-stripped tickets such as `no puedo entrar a mi cuenta`
+  are no longer read as English, alone or beside English boilerplate in a structured state.
+  Italian `qual` stays Italian, and English words such as `mis`, `dime` and `solo` stay English.
+- Single-sequence encoder work is submitted to Metal while the graph is built, single-sequence
+  CPU batches score in FP32 to avoid an MLX FP16 crash, and long local attention bounds its
+  key/value work to each block's window.
+- Upstream's vega choice-label folding and ONNX export verification apply to modules not
+  shipped here.
+- Validation: host, contract and native tests and the public API audit on the release source.
+  Upstream's idle-window timing test failed on the runner, as it does on the pre-port commit.
+  Real-checkpoint validation was not re-run.
+
 ## 0.8.1 — 2026-11-21
 
 Follows upstream **v0.5.2** (`e150aa92`). [Compatibility record](docs/UPSTREAM.md).

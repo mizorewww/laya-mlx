@@ -33,6 +33,7 @@ commit fe9a6c35023a7d94102e7feaaeaae8857d9d1b07, v0.4.34,
 commit 80a1da1fa5448ea12163f4d977935625a0aea670, v0.4.35,
 commit b1d656952f0f9581ea691a70cb6f38abf3eb13a9, v0.4.37,
 commit d1282e791d71e92f24f816ff3836e4fd1c2ded4a, v0.5.1,
-commit 090c540ec4cd0e5c71d539d952f0250e97399fcb, and v0.5.2,
-commit e150aa92a0d4059ac621875b39b620847cf1b88a (Apache-2.0).
+commit 090c540ec4cd0e5c71d539d952f0250e97399fcb, v0.5.2,
+commit e150aa92a0d4059ac621875b39b620847cf1b88a, and v0.5.3,
+commit abefd7d955008a59287b0fa8c5753cb323307693 (Apache-2.0).
 See docs/UPSTREAM.md for source mapping and native backend boundaries.
