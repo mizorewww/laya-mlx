@@ -65,6 +65,7 @@ by its own regression tests.
 | Parallel checkpoint warmup | Synthetic batches omit option layout tensors | Include shared position IDs and isolated option IDs so native parallel models can warm up, including automatic compiled warmup | `tests/test_warmup.py` |
 | `Router.predict_batch` grouping | Schemas serialized with `json.dumps`, so key `1` and `"1"` (or `True` and `"true"`) share a group and later requests receive the first request's key types | Grouping signature keeps Python key types and insertion order; equal schemas still share a batch | `tests/test_batch_key_types.py` |
 | Serial hook timeout (`hooks_concurrent=False`) | The caller releases the lock when a hook times out while the hook is still running, so later serial hooks can overlap it | The worker holds the lock until the hook exits; `hooks_timeout` includes the lock wait, and a hook whose deadline passes while waiting is never invoked | `tests/test_hook_serialization.py` |
+| Agno remote routing hints | `LayaAgnoRouter` and `LayaAgnoGuardrail` raise `TypeError` before sending a request with `task` or a string `lang_guess` | Forward supplied hints in the JSON body and omit unset hints; non-string remote `lang_guess` is still rejected | `tests/test_agno_remote.py` |
 
 When an upstream release fixes one of these, adopt upstream's version and remove the row.
 

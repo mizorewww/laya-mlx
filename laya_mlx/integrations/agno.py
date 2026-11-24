@@ -296,6 +296,8 @@ def _call_remote(
     head_max_len: Optional[int] = None,
     lang: Optional[str] = None,
     min_confidence: Optional[float] = None,
+    task: Optional[str] = None,
+    lang_guess: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Send a decision request to a remote laya-serve HTTP instance via urllib.
 
@@ -318,6 +320,10 @@ def _call_remote(
         payload["lang"] = lang
     if min_confidence is not None:
         payload["min_confidence"] = min_confidence
+    if task is not None:
+        payload["task"] = task
+    if lang_guess is not None:
+        payload["lang_guess"] = lang_guess
 
     data = json.dumps(payload).encode("utf-8")
     headers = {"Content-Type": "application/json"}
