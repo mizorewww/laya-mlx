@@ -29,9 +29,10 @@ evaluation, CLI, HTTP, MCP and the framework integrations) is upstream's host co
   reads. This preserves the mathematical dependencies; changed projection shapes can affect
   floating-point rounding. `tests/test_selected_head.py` checks selected outputs against the full
   head, including zero head layers, padding, FP32/FP16 and compilation.
-- For long, unpadded single-sequence FP16 Metal inference, the encoder limits each local
-  attention block to the keys within its bidirectional window. It retains the existing
-  inclusive per-query mask and uses MLX attention for each block.
+- For eager FP16 Metal inference with sequential option layout, eligible sliding-attention
+  layers bound each query block's key/value range at sequence lengths of 768 or more,
+  including padded batches. Valid queries keep their inclusive window; padded queries
+  always allow self-attention so every block slice has at least one unmasked key.
 
 ## Not included
 
