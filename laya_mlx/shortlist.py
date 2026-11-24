@@ -552,7 +552,14 @@ def _embeddings(embed_fn, texts: Sequence[str]) -> np.ndarray:
             "embed_fn must return an array of shape (%d, dim), got %s"
             % (len(texts), tuple(arr.shape))
         )
-    return np.nan_to_num(arr, copy=True, nan=0.0, posinf=0.0, neginf=0.0)
+    # Casting a plain ndarray to a different dtype already copies its data.
+    # Other conversions may borrow storage from the embedding provider.
+    if type(raw) is not np.ndarray or raw.dtype == arr.dtype:
+        arr = arr.copy(order="K")
+    finite = np.isfinite(arr)
+    if not finite.all():
+        arr[~finite] = 0.0
+    return arr
 
 
 def _cosine(query: np.ndarray, docs: np.ndarray) -> np.ndarray:
