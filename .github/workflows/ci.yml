@@ -22,13 +22,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: NandhaKishorM/laya
-          ref: e150aa92a0d4059ac621875b39b620847cf1b88a # v0.5.2
+          ref: abefd7d955008a59287b0fa8c5753cb323307693 # v0.5.3
           path: .upstream
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: python -m pip install -e '.[dev,serve,mcp,structured]'
-      - run: pytest -q tests/test_official_host.py tests/test_upstream_0417.py tests/test_upstream_0434.py tests/test_upstream_051.py tests/test_upstream_052.py
+      - run: pytest -q tests/test_official_host.py tests/test_upstream_0417.py tests/test_upstream_0434.py tests/test_upstream_051.py tests/test_upstream_052.py tests/test_upstream_053.py
       - run: python scripts/audit_public_api.py --package laya_mlx
       - run: python -m compileall -q laya_mlx tests scripts
   test:
@@ -43,7 +43,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: NandhaKishorM/laya
-          ref: e150aa92a0d4059ac621875b39b620847cf1b88a # v0.5.2
+          ref: abefd7d955008a59287b0fa8c5753cb323307693 # v0.5.3
           path: .upstream
       - uses: actions/setup-python@v5
         with:
