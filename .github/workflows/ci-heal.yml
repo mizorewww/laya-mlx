@@ -74,6 +74,8 @@ jobs:
         id: claude
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # An adopted fork pull request, at the commit the maintainer approved.
+          allow_fork_prs: ${{ needs.triage.outputs.pr != '' }}
           # The fix works on this repository's code and CI logs; keep its transcript in the log.
           show_full_output: true
           github_token: ${{ secrets.GITHUB_TOKEN }}

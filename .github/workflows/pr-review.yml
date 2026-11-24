@@ -123,6 +123,8 @@ jobs:
           # The Claude GitHub App does not act for authors without write access.
           github_token: ${{ secrets.GITHUB_TOKEN }}
           allowed_non_write_users: "*"
+          # Forks too: Claude only reads, and nothing from the pull request runs.
+          allow_fork_prs: "true"
           claude_args: |
             --model claude-opus-5-5
             --max-turns 120
@@ -190,6 +192,11 @@ jobs:
             `findings` (review only): each problem on a line the PR adds or changes (`path` and its
             `line` in the PR head), most severe first. `summary` is posted as the maintainer, so
             write plainly and do not sign it.
+      - name: Fail without a decision
+        if: ${{ !steps.claude.outputs.structured_output }}
+        run: |
+          echo "::error::Claude returned no decision (skipped, or stopped early); see the step above."
+          exit 1
       - name: Act on the decision as the maintainer
         if: steps.claude.outputs.structured_output
         env:
