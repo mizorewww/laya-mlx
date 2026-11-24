@@ -27,11 +27,14 @@
   ],
   "packageRules": [
     {
-      "description": "Everything except upstream: detect and list on the Dependency Dashboard, open a PR only when ticked there",
+      "description": "Everything except upstream: detect and list on the Dependency Dashboard, open a PR only when ticked there, and merge it once CI passes",
       "matchDepNames": [
         "!NandhaKishorM/laya"
       ],
-      "dependencyDashboardApproval": true
+      "dependencyDashboardApproval": true,
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": false
     },
     {
       "description": "Upstream releases: one PR on a fixed branch, which upstream-port.yml hands to Claude Code",

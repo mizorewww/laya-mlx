@@ -24,6 +24,7 @@ RUN_ID = os.environ["RUN_ID"]
 CI_WORKFLOWS = {name.strip() for name in os.environ["CI_WORKFLOWS"].split(",") if name.strip()}
 PORT_WORKFLOW = os.environ.get("PORT_WORKFLOW", "")  # file name, empty without ports
 PORT_NAME = "Upstream port"
+RELEASE_WORKFLOW = os.environ.get("RELEASE_WORKFLOW", "")  # name; only rerun, never fixed
 PORT_BRANCH_INPUT = os.environ.get("PORT_BRANCH_INPUT") == "true"
 FAILED = {"failure", "cancelled", "timed_out", "startup_failure"}
 MAX_ATTEMPTS = 5  # a run whose jobs keep failing for the runner goes to Claude after this
@@ -122,6 +123,20 @@ def main():
     print(
         f"{name} run {RUN_ID} (attempt {run['run_attempt']}) on {branch} at {sha[:7]}: {conclusion}"
     )
+
+    if name == RELEASE_WORKFLOW:
+        # A release runs on a tag: rerun jobs that never got a runner, and a failed step
+        # once (flaky tests); anything else waits for the maintainer.
+        if conclusion not in FAILED:
+            done("Nothing to do for this release run.")
+        attempt = run["run_attempt"]
+        path = f"repos/{REPO}/actions/runs/{RUN_ID}/attempts/{attempt}/jobs?per_page=100"
+        failed = [j for j in api("GET", path)["jobs"] if j["conclusion"] in FAILED]
+        real = [j for j in failed if any(s["conclusion"] == "failure" for s in j["steps"])]
+        if failed and attempt < MAX_ATTEMPTS and (not real or attempt == 1):
+            api("POST", f"repos/{REPO}/actions/runs/{RUN_ID}/rerun-failed-jobs")
+            done("Reran release jobs " + ", ".join(j["name"] for j in failed) + ".")
+        done(f"Release attempt {attempt} failed; leaving it to the maintainer.")
 
     if name == PORT_NAME:
         # Its head_branch is the PR branch, or main for a dispatch: then check every open port.
