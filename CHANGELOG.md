@@ -3,6 +3,23 @@
 Each release names the upstream [Laya](https://github.com/NandhaKishorM/laya) revision whose host
 behavior it follows. Detailed records live in [docs/](docs/README.md).
 
+## 0.9.1 — 2026-11-25
+
+Follows upstream **v0.5.4** (`60a6ce91`). [Compatibility record](docs/UPSTREAM.md).
+
+- **Agno remote routing hints:** `LayaAgnoRouter` and `LayaAgnoGuardrail` forward `task` and a
+  string `lang_guess` to the remote server instead of raising `TypeError`, like the LangChain,
+  CrewAI and LlamaIndex adapters.
+- Sequential models on the CPU compute their action heads in FP32, as the parallel layout already
+  did, avoiding FP16 rounding in every action score.
+- Long local attention bounds its key/value work for padded and multi-row batches from a sequence
+  length of 768, and converted shortlist embeddings are no longer copied.
+- No change from upstream host behavior. Upstream v0.5.4 moves `laya.Learner`, `laya.Escalator`
+  and `laya.vllm_teacher` to the separate, noncommercially licensed `vegaml-learn` package; they
+  read with vegaml's reader and remain not included.
+- Validation: host, contract and native tests and the public API audit on the release source.
+  Real-checkpoint validation was not re-run.
+
 ## 0.9.0 — 2026-11-23
 
 Follows upstream **v0.5.3** (`abefd7d9`). [Compatibility record](docs/UPSTREAM.md).
