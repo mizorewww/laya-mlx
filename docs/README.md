@@ -11,7 +11,7 @@
 | [SNAKE_OPTIMIZATION.md](SNAKE_OPTIMIZATION.md) | `compile` / prefix reuse ablation on the Snake workload |
 | [LAUNCH.md](LAUNCH.md) | Shareable demo media and its provenance |
 
-## Upstream compatibility (current: v0.5.4)
+## Upstream compatibility (current: v0.5.5)
 
 | Document | Contents |
 |---|---|
