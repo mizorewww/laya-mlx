@@ -3,6 +3,15 @@
 Each release names the upstream [Laya](https://github.com/NandhaKishorM/laya) revision whose host
 behavior it follows. Detailed records live in [docs/](docs/README.md).
 
+## 0.9.2 — 2026-11-26
+
+Follows upstream **v0.5.5** (`8f445c62`). [Compatibility record](docs/UPSTREAM.md).
+
+- No change from upstream host behavior. Upstream v0.5.5 is a documentation release: its README
+  cites the accompanying paper at the top and drops duplicated sections; no code changes.
+- Validation: host, contract and native tests and the public API audit on the release source.
+  Real-checkpoint validation was not re-run.
+
 ## 0.9.1 — 2026-11-25
 
 Follows upstream **v0.5.4** (`60a6ce91`). [Compatibility record](docs/UPSTREAM.md).

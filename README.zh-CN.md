@@ -120,7 +120,7 @@ laya-snake --optimize --max-speed
 ## 与上游的关系
 
 这是独立移植，不是 Convai Innovations 的官方发布。提示词格式、校准、路由、输出结构和主机侧 API
-跟随 [NandhaKishorM/laya](https://github.com/NandhaKishorM/laya) **v0.5.4**；编码器和决策头用 MLX
+跟随 [NandhaKishorM/laya](https://github.com/NandhaKishorM/laya) **v0.5.5**；编码器和决策头用 MLX
 重新实现。CUDA、ONNX、PyTorch 后端控制、vegaml 引擎和训练不在范围内，RLCD 训练与微调请使用上游项目。
 [原生边界](https://github.com/mizorewww/laya-mlx/blob/main/docs/USAGE.md#upstream-compatibility) ·
 [上游兼容性记录](https://github.com/mizorewww/laya-mlx/blob/main/docs/UPSTREAM.md) ·

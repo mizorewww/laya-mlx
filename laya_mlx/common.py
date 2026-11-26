@@ -1,4 +1,4 @@
-"""Official Laya v0.5.4 host semantics; native MLX collation is in agent.py."""
+"""Official Laya v0.5.5 host semantics; native MLX collation is in agent.py."""
 
 from __future__ import annotations
 
